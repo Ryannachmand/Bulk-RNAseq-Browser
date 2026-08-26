@@ -1,8 +1,9 @@
 import json
 import os
 import shutil
+from typing import Any, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 
 router = APIRouter(prefix="/categories")
 
@@ -40,7 +41,7 @@ def get_categories():
 
 
 @router.put("")
-def update_categories(categories: list):
+def update_categories(categories: List[Any] = Body(...)):
     for cat in categories:
         if not isinstance(cat, dict):
             raise HTTPException(status_code=422, detail="Each category must be an object")
