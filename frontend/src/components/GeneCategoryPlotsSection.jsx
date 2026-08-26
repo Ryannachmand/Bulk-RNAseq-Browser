@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import CategoryEditor from './CategoryEditor'
 import CategoryHeatmapSection from './CategoryHeatmapSection'
+import CategoryVolcanoSection from './CategoryVolcanoSection'
 
-const SUBTAB_HEATMAP = 'heatmap'
+const SUBTAB_HEATMAP  = 'heatmap'
+const SUBTAB_VOLCANO  = 'volcano'
 
 export default function GeneCategoryPlotsSection() {
   const [subtab, setSubtab] = useState(SUBTAB_HEATMAP)
@@ -49,11 +51,14 @@ export default function GeneCategoryPlotsSection() {
         <button style={subtabStyle(subtab === SUBTAB_HEATMAP)} onClick={() => setSubtab(SUBTAB_HEATMAP)}>
           Categorized Heatmap
         </button>
-        {/* Categorized Volcano subtab arrives in the next brief */}
+        <button style={subtabStyle(subtab === SUBTAB_VOLCANO)} onClick={() => setSubtab(SUBTAB_VOLCANO)}>
+          Categorized Volcano
+        </button>
       </div>
 
       <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1.2rem', background: '#fff' }}>
-        {subtab === SUBTAB_HEATMAP && <CategoryHeatmapSection />}
+        {subtab === SUBTAB_HEATMAP  && <CategoryHeatmapSection />}
+        {subtab === SUBTAB_VOLCANO  && <CategoryVolcanoSection />}
       </div>
     </div>
   )

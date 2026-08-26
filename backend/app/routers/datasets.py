@@ -32,6 +32,11 @@ R_CATEGORY_HEATMAP_SCRIPT = os.path.join(
     "..", "..", "r_scripts", "render_category_heatmaps.R",
 )
 
+R_CATEGORY_VOLCANO_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "r_scripts", "render_category_volcanos.R",
+)
+
 
 # ── R script paths ────────────────────────────────────────────────────────────
 
@@ -717,3 +722,115 @@ def render_r_category_heatmaps(dataset_id: str, params: RCategoryHeatmapParams):
         )
 
     return FileResponse(png_path, media_type="image/png", filename="category_heatmaps.png")
+
+
+# ── DE dataset listing ────────────────────────────────────────────────────────
+
+@router.get("/de-list")
+def list_de_datasets():
+    """Return all dataset IDs that have a de_results.csv."""
+    entries = []
+    if not os.path.isdir(_STORAGE_ROOT):
+        return {"datasets": []}
+    for name in sorted(os.listdir(_STORAGE_ROOT)):
+        path = os.path.join(_STORAGE_ROOT, name, "de_results.csv")
+        if os.path.exists(path):
+            entries.append({"id": name})
+    return {"datasets": entries}
+
+
+# ── Categorized volcano endpoints ─────────────────────────────────────────────
+
+@router.get("/{dataset_id}/categorized-volcano")
+def get_categorized_volcano(dataset_id: str):
+    """Return full DE gene list + per-active-category gene membership."""
+    df = load_dataset(dataset_id)
+    if df is None:
+        raise HTTPException(status_code=404, detail="DE dataset not found")
+
+    # Normalise gene symbol column
+    if "gene" in df.columns and "symbol" not in df.columns:
+        df = df.rename(columns={"gene": "symbol"})
+    if "symbol" not in df.columns:
+        raise HTTPException(status_code=422, detail="DE table has no 'gene' or 'symbol' column")
+
+    cols = ["symbol", "log2FoldChange", "padj"]
+    optional = [c for c in ["baseMean", "lfcSE", "stat", "pvalue"] if c in df.columns]
+    all_genes = (
+        df[cols + optional]
+        .dropna(subset=["symbol", "log2FoldChange", "padj"])
+        .to_dict("records")
+    )
+
+    gene_set = {r["symbol"] for r in all_genes}
+
+    categories = _load_categories()
+    active_cats = [c for c in categories if c.get("active", True)]
+    cat_results = [
+        {
+            "name": c["name"],
+            "genes": [g for g in c["genes"] if g in gene_set],
+        }
+        for c in active_cats
+    ]
+
+    return {"all_genes": all_genes, "categories": cat_results}
+
+
+class RCategoryVolcanoParams(BaseModel):
+    padj_cutoff: float = 0.05
+    lfc_cutoff: float = 1.0
+    n_label: int = 15
+
+
+@router.post("/{dataset_id}/render-r-category-volcanos")
+def render_r_category_volcanos(dataset_id: str, params: RCategoryVolcanoParams):
+    d = dataset_dir(dataset_id)
+    de_path = os.path.join(d, "de_results.csv")
+    if not os.path.exists(de_path):
+        raise HTTPException(status_code=404, detail="DE dataset not found")
+
+    categories = _load_categories()
+    active_cats = [c for c in categories if c.get("active", True)]
+    if not active_cats:
+        raise HTTPException(status_code=422, detail="No active categories defined")
+
+    params_path = os.path.join(d, "r_cat_volcano_params.json")
+    out_prefix = os.path.join(d, "r_cat_volcano")
+
+    with open(params_path, "w") as f:
+        json.dump(
+            {
+                "de_path": de_path,
+                "categories": [{"name": c["name"], "genes": c["genes"]} for c in active_cats],
+                "padj_cutoff": params.padj_cutoff,
+                "lfc_cutoff": params.lfc_cutoff,
+                "n_label": params.n_label,
+                "out_prefix": out_prefix,
+            },
+            f,
+            indent=2,
+        )
+
+    try:
+        cmd = _find_rscript() + [
+            os.path.abspath(R_CATEGORY_VOLCANO_SCRIPT),
+            params_path,
+        ]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"R script failed:\n{result.stderr[-3000:]}",
+        )
+
+    png_path = out_prefix + "_combined.png"
+    if not os.path.exists(png_path):
+        raise HTTPException(
+            status_code=500, detail="R script ran but produced no combined PNG output"
+        )
+
+    return FileResponse(png_path, media_type="image/png", filename="category_volcanos.png")

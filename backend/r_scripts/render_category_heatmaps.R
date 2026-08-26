@@ -105,8 +105,8 @@ build_panel <- function(cat_name, gene_list) {
     dimnames = dimnames(mat)
   )
 
-  h_in <- max(6, nrow(mat) * 0.45 + 3)
-  w_in <- max(10, ncol(mat) * 0.6 + 4)
+  h_in <- max(8, nrow(mat) * 0.5 + 4)
+  w_in <- max(10, ncol(mat) * 0.7 + 5)
 
   message(sprintf("  [%s] %d genes selected", cat_name, nrow(mat)))
 
@@ -114,7 +114,7 @@ build_panel <- function(cat_name, gene_list) {
     zmat,
     color             = palette,
     display_numbers   = label_mat,
-    fontsize_number   = 9,
+    fontsize_number   = 16,
     cluster_rows      = TRUE,
     cluster_cols      = FALSE,
     show_rownames     = TRUE,
@@ -122,8 +122,8 @@ build_panel <- function(cat_name, gene_list) {
     annotation_col    = ann$ann_df,
     annotation_colors = ann$ann_colors,
     gaps_col          = ann$gaps_col,
-    fontsize_row      = 11,
-    fontsize          = 11,
+    fontsize_row      = 22,
+    fontsize          = 20,
     main              = sprintf("%s  [colour = z-score ±3 | numbers = raw FPKM]", cat_name),
     border_color      = "grey90",
     scale             = "none",
@@ -149,15 +149,14 @@ for (cat_name in names(hmaps)) {
   safe <- gsub("[^A-Za-z0-9]+", "_", cat_name)
   h <- hmaps[[cat_name]]
 
-  # Estimate dimensions for individual files
-  n_genes <- nrow(h$gtable$grobs[[1]]$children[[1]]$grobs[[1]]$children[[1]]$vp$layout$heights) %/% 1
-  h_in <- max(6, 16)
-  w_in <- 18
+  # Use per-panel dimensions consistent with build_panel()
+  h_in <- max(8, N_TOP * 0.5 + 4)
+  w_in <- 10
 
   for (ext in c("png", "pdf")) {
     out_path <- paste0(out_prefix, "_", safe, ".", ext)
     if (ext == "png") {
-      png(out_path, width = w_in, height = h_in, units = "in", res = 300)
+      png(out_path, width = w_in, height = h_in, units = "in", res = 150)
     } else {
       pdf(out_path, width = w_in, height = h_in)
     }
@@ -169,17 +168,19 @@ for (cat_name in names(hmaps)) {
 }
 
 # ── Combined multi-panel PDF + PNG ────────────────────────────────────────────
-ncols <- 2
-nrows <- ceiling(n_cats / ncols)
-panel_w <- 18
-panel_h <- 16
-total_w  <- ncols * panel_w
-total_h  <- nrows * panel_h
+# 150 dpi for PNG: at screen display width the fonts appear ~3× larger than
+# they would at 300 dpi for the same physical figure size.
+ncols   <- 2
+nrows   <- ceiling(n_cats / ncols)
+panel_w <- 10
+panel_h <- max(8, N_TOP * 0.5 + 4)
+total_w <- ncols * panel_w
+total_h <- nrows * panel_h
 
 for (ext in c("pdf", "png")) {
   out_path <- paste0(out_prefix, "_combined.", ext)
   if (ext == "png") {
-    png(out_path, width = total_w, height = total_h, units = "in", res = 300)
+    png(out_path, width = total_w, height = total_h, units = "in", res = 150)
   } else {
     pdf(out_path, width = total_w, height = total_h)
   }

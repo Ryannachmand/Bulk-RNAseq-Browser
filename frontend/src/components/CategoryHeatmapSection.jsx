@@ -27,14 +27,17 @@ function CategoryPanel({ cat, samples, grouping }) {
   }
 
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
-      <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: '0.9em' }}>
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6 }}>
+      <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: '0.9em', borderRadius: '6px 6px 0 0' }}>
         {cat.name}
         <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: 8, fontSize: '0.85em' }}>
           {cat.genes.length} genes
         </span>
       </div>
-      <HeatmapPlot data={data} />
+      {/* overflow-x: auto lets the fixed-width Plotly chart scroll rather than clip */}
+      <div style={{ overflowX: 'auto' }}>
+        <HeatmapPlot data={data} />
+      </div>
     </div>
   )
 }

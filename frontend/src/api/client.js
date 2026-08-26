@@ -168,6 +168,42 @@ export async function getCategorizedHeatmap(datasetId, nTopGenes = 40) {
   return res.json()
 }
 
+// ── DE dataset listing ────────────────────────────────────────────────────────
+
+export async function listDeDatasets() {
+  const res = await fetch(`${BASE}/datasets/de-list`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to list DE datasets')
+  }
+  return res.json()  // { datasets: [{id}] }
+}
+
+// ── Categorized volcano ───────────────────────────────────────────────────────
+
+export async function getCategorizedVolcano(datasetId) {
+  const res = await fetch(`${BASE}/datasets/${datasetId}/categorized-volcano`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to compute categorized volcano')
+  }
+  return res.json()
+}
+
+export async function renderRCategoryVolcanos(datasetId, { padjCutoff = 0.05, lfcCutoff = 1.0, nLabel = 15 } = {}) {
+  const res = await fetch(`${BASE}/datasets/${datasetId}/render-r-category-volcanos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ padj_cutoff: padjCutoff, lfc_cutoff: lfcCutoff, n_label: nLabel }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R category volcano render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
 export async function renderRCategoryHeatmaps(datasetId, nTopGenes = 40) {
   const res = await fetch(`${BASE}/datasets/${datasetId}/render-r-category-heatmaps`, {
     method: 'POST',
