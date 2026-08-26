@@ -5,3 +5,8 @@ backend/data/
 node_modules/
 dist/
 .env
+node_modules/
+backend/data/
+__pycache__/
+*.pyc
+.env
