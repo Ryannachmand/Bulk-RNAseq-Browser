@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import List, Optional
 
 import numpy as np
+import pandas as pd
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
