@@ -4,6 +4,7 @@ import { renderRPca } from '../api/client'
 export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
   const [pcPair, setPcPair] = useState('PC1_PC2')
   const [useCorrected, setUseCorrected] = useState(false)
+  const [plotTitle, setPlotTitle] = useState('')
   const [rendering, setRendering] = useState(false)
   const [imgUrl, setImgUrl] = useState(null)
   const [error, setError] = useState(null)
@@ -19,6 +20,7 @@ export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
         pcY,
         useCorrected: useCorrected && hasCorrected,
         nGenes,
+        plotTitle: plotTitle.trim() || null,
       })
       setImgUrl(url)
     } catch (e) {
@@ -70,6 +72,17 @@ export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
           </label>
         )}
 
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.9em', flexGrow: 1, minWidth: 180 }}>
+          Plot title <span style={{ fontWeight: 400, color: '#6b7280' }}>(optional)</span>
+          <input
+            type="text"
+            value={plotTitle}
+            onChange={e => setPlotTitle(e.target.value)}
+            placeholder="Leave blank for auto title"
+            style={{ fontSize: '0.9em', padding: '0.2rem 0.4rem', border: '1px solid #d1d5db', borderRadius: 3 }}
+          />
+        </label>
+
         <button
           onClick={handleRender}
           disabled={rendering}
@@ -81,6 +94,7 @@ export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
             borderRadius: 4,
             cursor: rendering ? 'default' : 'pointer',
             fontSize: '0.9em',
+            alignSelf: 'flex-end',
           }}
         >
           {rendering ? 'Rendering…' : 'Generate R plot'}
@@ -100,10 +114,27 @@ export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
             alt="PCA plot (R)"
             style={{ maxWidth: '100%', border: '1px solid #e5e7eb', borderRadius: 4 }}
           />
-          <p style={{ fontSize: '0.8em', color: '#6b7280', marginTop: '0.4rem' }}>
-            Styled to match Yang et al. NewPCA2.R (geom_point size=3, geom_text_repel,
-            theme_bw, 9×6 in at 300 dpi). PDF also saved server-side.
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
+            <a
+              href={imgUrl}
+              download="pca_plot.png"
+              style={{
+                display: 'inline-block',
+                padding: '0.35rem 0.85rem',
+                background: '#2563eb',
+                color: '#fff',
+                borderRadius: 4,
+                fontSize: '0.88em',
+                textDecoration: 'none',
+              }}
+            >
+              Download PNG
+            </a>
+            <span style={{ fontSize: '0.8em', color: '#6b7280' }}>
+              Styled to match Yang et al. NewPCA2.R (geom_point size=3, geom_text_repel,
+              theme_bw, 9×6 in at 300 dpi). PDF also saved server-side.
+            </span>
+          </div>
         </div>
       )}
     </div>

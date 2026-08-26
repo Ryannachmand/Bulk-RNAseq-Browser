@@ -112,11 +112,11 @@ export async function getPcaData(datasetId, { nGenes = 500 } = {}) {
   return res.json()  // { raw, corrected, n_genes_used }
 }
 
-export async function renderRPca(datasetId, { pcX = 'PC1', pcY = 'PC2', useCorrected = false, nGenes = 500 }) {
+export async function renderRPca(datasetId, { pcX = 'PC1', pcY = 'PC2', useCorrected = false, nGenes = 500, plotTitle = null }) {
   const res = await fetch(`${BASE}/datasets/${datasetId}/render-r-pca`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pc_x: pcX, pc_y: pcY, use_corrected: useCorrected, n_genes: nGenes }),
+    body: JSON.stringify({ pc_x: pcX, pc_y: pcY, use_corrected: useCorrected, n_genes: nGenes, plot_title: plotTitle || null }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }))

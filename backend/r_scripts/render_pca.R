@@ -23,12 +23,15 @@ use_corrected <- isTRUE(data$use_corrected)
 has_corrected <- !is.null(data$corrected)
 
 if (use_corrected && has_corrected) {
-  pc_coords  <- data$corrected
-  plot_title <- paste0("PCA (Batch Corrected) - ", pc_x, " vs ", pc_y)
+  pc_coords        <- data$corrected
+  default_title    <- paste0("PCA (Batch Corrected) - ", pc_x, " vs ", pc_y)
 } else {
-  pc_coords  <- data$raw
-  plot_title <- paste0("PCA - ", pc_x, " vs ", pc_y)
+  pc_coords        <- data$raw
+  default_title    <- paste0("PCA - ", pc_x, " vs ", pc_y)
 }
+
+custom_title <- data$plot_title
+plot_title   <- if (!is.null(custom_title) && nchar(trimws(custom_title)) > 0) custom_title else default_title
 
 samples    <- data$raw$samples
 sample_meta <- data$raw$sample_meta

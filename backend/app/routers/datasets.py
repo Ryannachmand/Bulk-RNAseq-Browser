@@ -527,6 +527,7 @@ class RPcaParams(BaseModel):
     pc_y: str = "PC2"
     use_corrected: bool = False
     n_genes: int = 500
+    plot_title: Optional[str] = None
 
 
 @router.post("/{dataset_id}/render-r-pca")
@@ -548,6 +549,7 @@ def render_r_pca(dataset_id: str, params: RPcaParams):
                 "pc_x": params.pc_x,
                 "pc_y": params.pc_y,
                 "use_corrected": params.use_corrected,
+                "plot_title": params.plot_title,
             },
             f,
         )
