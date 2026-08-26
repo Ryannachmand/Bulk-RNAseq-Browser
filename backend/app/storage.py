@@ -1,3 +1,4 @@
+import json
 import os
 import pandas as pd
 
@@ -39,3 +40,25 @@ def load_fpkm_matrix(dataset_id: str) -> pd.DataFrame | None:
     if not os.path.exists(path):
         return None
     return pd.read_csv(path, index_col=0)
+
+
+def save_pathway_results(dataset_id: str, df: pd.DataFrame, meta: dict) -> None:
+    path = _dataset_dir(dataset_id)
+    os.makedirs(path, exist_ok=True)
+    df.to_csv(os.path.join(path, "pathway_results.csv"), index=False)
+    with open(os.path.join(path, "pathway_meta.json"), "w") as f:
+        json.dump(meta, f)
+
+
+def load_pathway_results(dataset_id: str) -> tuple[pd.DataFrame | None, dict | None]:
+    d = _dataset_dir(dataset_id)
+    csv_path = os.path.join(d, "pathway_results.csv")
+    meta_path = os.path.join(d, "pathway_meta.json")
+    if not os.path.exists(csv_path):
+        return None, None
+    df = pd.read_csv(csv_path)
+    meta: dict = {}
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            meta = json.load(f)
+    return df, meta

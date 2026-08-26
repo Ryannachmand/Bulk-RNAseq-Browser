@@ -14,12 +14,15 @@ from pydantic import BaseModel
 
 from app.parsers.de_table import DetectionError, parse_de_table
 from app.parsers.fpkm_matrix import FPKMParseError, parse_fpkm_matrix
+from app.parsers.pathway_table import PathwayParseError, parse_pathway_table
 from app.storage import (
     dataset_dir,
     load_dataset,
     load_fpkm_matrix,
+    load_pathway_results,
     save_dataset,
     save_fpkm_matrix,
+    save_pathway_results,
 )
 
 router = APIRouter(prefix="/datasets")
@@ -53,6 +56,11 @@ R_HEATMAP_SCRIPT = os.path.join(
 R_PCA_SCRIPT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "..", "..", "r_scripts", "render_pca.R",
+)
+
+R_PATHWAY_BARPLOT_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "r_scripts", "render_pathway_barplot.R",
 )
 
 
@@ -834,3 +842,113 @@ def render_r_category_volcanos(dataset_id: str, params: RCategoryVolcanoParams):
         )
 
     return FileResponse(png_path, media_type="image/png", filename="category_volcanos.png")
+
+
+# ── Pathway barplot endpoints ─────────────────────────────────────────────────
+
+@router.post("/upload-pathway")
+async def upload_pathway(file: UploadFile = File(...)):
+    contents = await file.read()
+    try:
+        df, meta = parse_pathway_table(contents, filename=file.filename or "")
+    except PathwayParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    dataset_id = str(uuid.uuid4())
+    save_pathway_results(dataset_id, df, meta)
+    return {
+        "dataset_id": dataset_id,
+        "n_pathways": len(df),
+        "direction_available": meta.get("direction_available", False),
+    }
+
+
+@router.get("/{dataset_id}/pathway-results")
+def get_pathway_results(dataset_id: str, top_n: int = Query(default=20, ge=1, le=200)):
+    df, meta = load_pathway_results(dataset_id)
+    if df is None:
+        raise HTTPException(status_code=404, detail="Pathway results not found")
+
+    direction_available = meta.get("direction_available", False)
+
+    if direction_available and "direction" in df.columns:
+        up = df[df["direction"].str.lower().str.startswith("up")].nlargest(top_n, "neg_log10_padj")
+        down = df[df["direction"].str.lower().str.startswith("down")].nlargest(top_n, "neg_log10_padj")
+        subset = pd.concat([up, down], ignore_index=True)
+    else:
+        subset = df.nlargest(top_n, "neg_log10_padj")
+
+    import json as _json
+    return {
+        "rows": _json.loads(subset.to_json(orient="records")),
+        "direction_available": direction_available,
+    }
+
+
+@router.get("/pathway-list")
+def list_pathway_datasets():
+    entries = []
+    if not os.path.isdir(_STORAGE_ROOT):
+        return {"datasets": []}
+    for name in sorted(os.listdir(_STORAGE_ROOT)):
+        path = os.path.join(_STORAGE_ROOT, name, "pathway_results.csv")
+        if os.path.exists(path):
+            meta_path = os.path.join(_STORAGE_ROOT, name, "pathway_meta.json")
+            meta: dict = {}
+            if os.path.exists(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+            entries.append({"id": name, "direction_available": meta.get("direction_available", False)})
+    return {"datasets": entries}
+
+
+class RPathwayBarplotParams(BaseModel):
+    top_n: int = 20
+    plot_title: str = "Pathway Enrichment"
+
+
+@router.post("/{dataset_id}/render-r-pathway-barplot")
+def render_r_pathway_barplot(dataset_id: str, params: RPathwayBarplotParams):
+    d = dataset_dir(dataset_id)
+    csv_path = os.path.join(d, "pathway_results.csv")
+    if not os.path.exists(csv_path):
+        raise HTTPException(status_code=404, detail="Pathway results not found")
+
+    _, meta = load_pathway_results(dataset_id)
+    direction_available = (meta or {}).get("direction_available", False)
+
+    params_path = os.path.join(d, "r_pathway_params.json")
+    out_prefix = os.path.join(d, "r_pathway_barplot")
+
+    with open(params_path, "w") as f:
+        json.dump(
+            {
+                "top_n": params.top_n,
+                "direction_available": direction_available,
+                "plot_title": params.plot_title,
+            },
+            f,
+        )
+
+    try:
+        cmd = _find_rscript() + [
+            os.path.abspath(R_PATHWAY_BARPLOT_SCRIPT),
+            csv_path,
+            params_path,
+            out_prefix,
+        ]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"R script failed:\n{result.stderr[-2000:]}",
+        )
+
+    png_path = out_prefix + ".png"
+    if not os.path.exists(png_path):
+        raise HTTPException(status_code=500, detail="R script ran but produced no PNG output")
+
+    return FileResponse(png_path, media_type="image/png", filename="pathway_barplot.png")
