@@ -1,4 +1,4 @@
-export default function UploadPanel({ onUpload, disabled }) {
+export default function UploadPanel({ onUpload, disabled, label = 'Upload DE results table (CSV or TSV):' }) {
   function handleChange(e) {
     const file = e.target.files[0]
     if (file) onUpload(file)
@@ -8,7 +8,7 @@ export default function UploadPanel({ onUpload, disabled }) {
   return (
     <div style={{ margin: '1rem 0' }}>
       <label>
-        <strong>Upload DE results table (CSV or TSV):</strong>
+        <strong>{label}</strong>
         <br />
         <input
           type="file"

@@ -1,19 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Plot from 'react-plotly.js'
 
-const UP_COLOR = '#E41A1C'
+const UP_COLOR   = '#E41A1C'
 const DOWN_COLOR = '#4878CF'
-const NS_COLOR = '#B3B3B3'
+const NS_COLOR   = '#B3B3B3'
 const LINE_COLOR = '#999999'
 
-export default function VolcanoPlot({ rows }) {
-  const [padjCutoff, setPadjCutoff] = useState(0.05)
-  const [lfcCutoff, setLfcCutoff] = useState(1)
+export default function VolcanoPlot({ rows, padjCutoff, lfcCutoff, onPadjChange, onLfcChange }) {
+  const fpkmCols = useMemo(() => {
+    if (!rows.length) return []
+    return Object.keys(rows[0]).filter(k => k.toUpperCase().startsWith('FPKM_'))
+  }, [rows])
 
   const { x, y, colors, texts } = useMemo(() => {
     const x = [], y = [], colors = [], texts = []
     for (const r of rows) {
-      const lfc = r.log2FoldChange
+      const lfc  = r.log2FoldChange
       const padj = r.padj
       if (lfc == null || padj == null || !isFinite(lfc) || !isFinite(padj)) continue
 
@@ -22,8 +24,19 @@ export default function VolcanoPlot({ rows }) {
 
       x.push(lfc)
       y.push(negLogP)
+
+      let fpkmLine = ''
+      if (fpkmCols.length > 0) {
+        const best = fpkmCols.reduce((a, b) =>
+          (r[a] ?? -Infinity) >= (r[b] ?? -Infinity) ? a : b
+        )
+        if (r[best] != null) {
+          fpkmLine = `<br>${best}: ${Number(r[best]).toFixed(2)}`
+        }
+      }
+
       texts.push(
-        `<b>${r.gene}</b><br>log2FC: ${lfc.toFixed(3)}<br>padj: ${padj.toExponential(2)}`
+        `<b>${r.gene}</b><br>log2FC: ${lfc.toFixed(3)}<br>padj: ${padj.toExponential(2)}${fpkmLine}`
       )
 
       const sig = padj < padjCutoff && Math.abs(lfc) > lfcCutoff
@@ -35,13 +48,11 @@ export default function VolcanoPlot({ rows }) {
   const threshold = -Math.log10(padjCutoff)
 
   const shapes = [
-    // horizontal padj threshold line
     {
       type: 'line', xref: 'paper', x0: 0, x1: 1,
       yref: 'y', y0: threshold, y1: threshold,
       line: { color: LINE_COLOR, width: 1, dash: 'dash' },
     },
-    // vertical lfc cutoffs
     {
       type: 'line', xref: 'x', x0: lfcCutoff, x1: lfcCutoff,
       yref: 'paper', y0: 0, y1: 1,
@@ -62,7 +73,7 @@ export default function VolcanoPlot({ rows }) {
           <input
             type="number" value={padjCutoff} min={0} max={1} step={0.01}
             style={{ width: 70 }}
-            onChange={e => setPadjCutoff(Number(e.target.value))}
+            onChange={e => onPadjChange(Number(e.target.value))}
           />
         </label>
         <label>
@@ -70,7 +81,7 @@ export default function VolcanoPlot({ rows }) {
           <input
             type="number" value={lfcCutoff} min={0} step={0.1}
             style={{ width: 70 }}
-            onChange={e => setLfcCutoff(Number(e.target.value))}
+            onChange={e => onLfcChange(Number(e.target.value))}
           />
         </label>
         <span style={{ color: '#555', fontSize: '0.9em' }}>
