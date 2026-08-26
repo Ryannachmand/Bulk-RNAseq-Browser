@@ -218,6 +218,50 @@ export async function renderRCategoryHeatmaps(datasetId, nTopGenes = 40) {
   return URL.createObjectURL(blob)
 }
 
+// ── Pathway barplot ───────────────────────────────────────────────────────────
+
+export async function uploadPathway(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE}/datasets/upload-pathway`, { method: 'POST', body: form })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Upload failed')
+  return data  // { dataset_id, n_pathways, direction_available }
+}
+
+export async function getPathwayResults(datasetId, topN = 20) {
+  const params = new URLSearchParams({ top_n: topN })
+  const res = await fetch(`${BASE}/datasets/${datasetId}/pathway-results?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to load pathway results')
+  }
+  return res.json()  // { rows, direction_available }
+}
+
+export async function listPathwayDatasets() {
+  const res = await fetch(`${BASE}/datasets/pathway-list`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to list pathway datasets')
+  }
+  return res.json()  // { datasets: [{id, direction_available}] }
+}
+
+export async function renderRPathwayBarplot(datasetId, { topN = 20, plotTitle = 'Pathway Enrichment' } = {}) {
+  const res = await fetch(`${BASE}/datasets/${datasetId}/render-r-pathway-barplot`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ top_n: topN, plot_title: plotTitle }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R pathway render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
 export async function renderRPca(datasetId, { pcX = 'PC1', pcY = 'PC2', useCorrected = false, nGenes = 500, plotTitle = null }) {
   const res = await fetch(`${BASE}/datasets/${datasetId}/render-r-pca`, {
     method: 'POST',

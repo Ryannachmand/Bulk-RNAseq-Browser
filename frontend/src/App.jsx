@@ -6,11 +6,13 @@ import RVolcanoPanel from './components/RVolcanoPanel'
 import HeatmapSection from './components/HeatmapSection'
 import PCASection from './components/PCASection'
 import GeneCategoryPlotsSection from './components/GeneCategoryPlotsSection'
+import PathwayBarplotSection from './components/PathwayBarplotSection'
 
 const FIG_VOLCANO   = 'volcano'
 const FIG_HEATMAP   = 'heatmap'
 const FIG_PCA       = 'pca'
 const FIG_CATEGORY  = 'category'
+const FIG_PATHWAY   = 'pathway'
 
 const TAB_PLOTLY = 'plotly'
 const TAB_R      = 'r'
@@ -125,6 +127,9 @@ export default function App() {
         <button style={figTabStyle(figureType === FIG_CATEGORY)} onClick={() => setFigureType(FIG_CATEGORY)}>
           Gene Category Plots
         </button>
+        <button style={figTabStyle(figureType === FIG_PATHWAY)} onClick={() => setFigureType(FIG_PATHWAY)}>
+          Pathway Barplot
+        </button>
       </div>
 
       {/* ── Volcano section ─────────────────────────────────────────────── */}
@@ -199,6 +204,13 @@ export default function App() {
       {figureType === FIG_CATEGORY && (
         <div>
           <GeneCategoryPlotsSection />
+        </div>
+      )}
+
+      {/* ── Pathway Barplot section ─────────────────────────────────────── */}
+      {figureType === FIG_PATHWAY && (
+        <div>
+          <PathwayBarplotSection />
         </div>
       )}
 
