@@ -5,10 +5,12 @@ import VolcanoPlot from './components/VolcanoPlot'
 import RVolcanoPanel from './components/RVolcanoPanel'
 import HeatmapSection from './components/HeatmapSection'
 import PCASection from './components/PCASection'
+import GeneCategoryPlotsSection from './components/GeneCategoryPlotsSection'
 
-const FIG_VOLCANO = 'volcano'
-const FIG_HEATMAP = 'heatmap'
-const FIG_PCA     = 'pca'
+const FIG_VOLCANO   = 'volcano'
+const FIG_HEATMAP   = 'heatmap'
+const FIG_PCA       = 'pca'
+const FIG_CATEGORY  = 'category'
 
 const TAB_PLOTLY = 'plotly'
 const TAB_R      = 'r'
@@ -120,6 +122,9 @@ export default function App() {
         <button style={figTabStyle(figureType === FIG_PCA)} onClick={() => setFigureType(FIG_PCA)}>
           PCA
         </button>
+        <button style={figTabStyle(figureType === FIG_CATEGORY)} onClick={() => setFigureType(FIG_CATEGORY)}>
+          Gene Category Plots
+        </button>
       </div>
 
       {/* ── Volcano section ─────────────────────────────────────────────── */}
@@ -187,6 +192,13 @@ export default function App() {
               <HeatmapSection heatmapId={heatmapId} initialSamples={heatmapSamples} />
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Gene Category Plots section ─────────────────────────────────── */}
+      {figureType === FIG_CATEGORY && (
+        <div>
+          <GeneCategoryPlotsSection />
         </div>
       )}
 

@@ -112,6 +112,76 @@ export async function getPcaData(datasetId, { nGenes = 500 } = {}) {
   return res.json()  // { raw, corrected, n_genes_used }
 }
 
+// ── Gene categories ───────────────────────────────────────────────────────────
+
+export async function getCategories() {
+  const res = await fetch(`${BASE}/categories`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to load categories')
+  }
+  return res.json()
+}
+
+export async function updateCategories(categories) {
+  const res = await fetch(`${BASE}/categories`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(categories),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to save categories')
+  }
+  return res.json()
+}
+
+export async function resetCategoriesDefaults() {
+  const res = await fetch(`${BASE}/categories/reset-defaults`, { method: 'POST' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to reset categories')
+  }
+  return res.json()
+}
+
+// ── FPKM dataset listing ──────────────────────────────────────────────────────
+
+export async function listFpkmDatasets() {
+  const res = await fetch(`${BASE}/datasets/fpkm-list`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to list datasets')
+  }
+  return res.json()  // { datasets: [{id}] }
+}
+
+// ── Categorized heatmap ───────────────────────────────────────────────────────
+
+export async function getCategorizedHeatmap(datasetId, nTopGenes = 40) {
+  const params = new URLSearchParams({ n_top_genes: nTopGenes })
+  const res = await fetch(`${BASE}/datasets/${datasetId}/categorized-heatmap?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to compute categorized heatmap')
+  }
+  return res.json()
+}
+
+export async function renderRCategoryHeatmaps(datasetId, nTopGenes = 40) {
+  const res = await fetch(`${BASE}/datasets/${datasetId}/render-r-category-heatmaps`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ n_top_genes: nTopGenes }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R category heatmap render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
 export async function renderRPca(datasetId, { pcX = 'PC1', pcY = 'PC2', useCorrected = false, nGenes = 500, plotTitle = null }) {
   const res = await fetch(`${BASE}/datasets/${datasetId}/render-r-pca`, {
     method: 'POST',
