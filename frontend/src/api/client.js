@@ -75,3 +75,53 @@ export async function renderRHeatmap(heatmapId, { genes, clusterRows }) {
   const blob = await res.blob()
   return URL.createObjectURL(blob)
 }
+
+// ── Sample metadata ───────────────────────────────────────────────────────────
+
+export async function getSamples(datasetId) {
+  const res = await fetch(`${BASE}/datasets/${datasetId}/samples`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to load samples')
+  }
+  return res.json()  // { samples, metadata }
+}
+
+export async function saveMetadata(datasetId, metadata) {
+  const res = await fetch(`${BASE}/datasets/${datasetId}/metadata`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ metadata }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to save metadata')
+  }
+  return res.json()
+}
+
+// ── PCA ───────────────────────────────────────────────────────────────────────
+
+export async function getPcaData(datasetId, { nGenes = 500 } = {}) {
+  const params = new URLSearchParams({ n_genes: nGenes })
+  const res = await fetch(`${BASE}/datasets/${datasetId}/pca?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to compute PCA')
+  }
+  return res.json()  // { raw, corrected, n_genes_used }
+}
+
+export async function renderRPca(datasetId, { pcX = 'PC1', pcY = 'PC2', useCorrected = false, nGenes = 500 }) {
+  const res = await fetch(`${BASE}/datasets/${datasetId}/render-r-pca`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pc_x: pcX, pc_y: pcY, use_corrected: useCorrected, n_genes: nGenes }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R PCA render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}

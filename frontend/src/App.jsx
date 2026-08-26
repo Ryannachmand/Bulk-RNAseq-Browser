@@ -4,9 +4,11 @@ import UploadPanel from './components/UploadPanel'
 import VolcanoPlot from './components/VolcanoPlot'
 import RVolcanoPanel from './components/RVolcanoPanel'
 import HeatmapSection from './components/HeatmapSection'
+import PCASection from './components/PCASection'
 
 const FIG_VOLCANO = 'volcano'
 const FIG_HEATMAP = 'heatmap'
+const FIG_PCA     = 'pca'
 
 const TAB_PLOTLY = 'plotly'
 const TAB_R      = 'r'
@@ -115,6 +117,9 @@ export default function App() {
         <button style={figTabStyle(figureType === FIG_HEATMAP)} onClick={() => setFigureType(FIG_HEATMAP)}>
           Heatmap
         </button>
+        <button style={figTabStyle(figureType === FIG_PCA)} onClick={() => setFigureType(FIG_PCA)}>
+          PCA
+        </button>
       </div>
 
       {/* ── Volcano section ─────────────────────────────────────────────── */}
@@ -180,6 +185,31 @@ export default function App() {
           {heatmapId && (
             <div style={{ marginTop: '1.5rem' }}>
               <HeatmapSection heatmapId={heatmapId} initialSamples={heatmapSamples} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PCA section ─────────────────────────────────────────────────── */}
+      {figureType === FIG_PCA && (
+        <div>
+          {!heatmapId && (
+            <>
+              <UploadPanel
+                onUpload={handleHeatmapUpload}
+                disabled={heatmapUploading || !connected}
+                label="Upload FPKM matrix (.csv) — genes × samples"
+              />
+              {heatmapUploading && <p style={{ color: '#555' }}>Uploading and parsing…</p>}
+              {heatmapError && (
+                <p style={{ color: '#cc2222' }}><strong>Error:</strong> {heatmapError}</p>
+              )}
+            </>
+          )}
+
+          {heatmapId && (
+            <div style={{ marginTop: '1rem' }}>
+              <PCASection datasetId={heatmapId} />
             </div>
           )}
         </div>
