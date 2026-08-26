@@ -24,6 +24,14 @@ from app.storage import (
 
 router = APIRouter(prefix="/datasets")
 
+from app.storage import STORAGE_ROOT as _STORAGE_ROOT
+_CATEGORIES_PATH = os.path.join(_STORAGE_ROOT, "categories.json")
+
+R_CATEGORY_HEATMAP_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "r_scripts", "render_category_heatmaps.R",
+)
+
 
 # ── R script paths ────────────────────────────────────────────────────────────
 
@@ -573,3 +581,139 @@ def render_r_pca(dataset_id: str, params: RPcaParams):
         raise HTTPException(status_code=500, detail="R script ran but produced no PNG output")
 
     return FileResponse(png_path, media_type="image/png", filename="pca.png")
+
+
+# ── FPKM dataset listing ──────────────────────────────────────────────────────
+
+@router.get("/fpkm-list")
+def list_fpkm_datasets():
+    """Return all dataset IDs that have an fpkm_matrix.csv."""
+    entries = []
+    if not os.path.isdir(_STORAGE_ROOT):
+        return {"datasets": []}
+    for name in sorted(os.listdir(_STORAGE_ROOT)):
+        path = os.path.join(_STORAGE_ROOT, name, "fpkm_matrix.csv")
+        if os.path.exists(path):
+            entries.append({"id": name})
+    return {"datasets": entries}
+
+
+# ── Categorized heatmap endpoints ─────────────────────────────────────────────
+
+def _load_categories() -> list:
+    if not os.path.exists(_CATEGORIES_PATH):
+        return []
+    with open(_CATEGORIES_PATH) as f:
+        return json.load(f)
+
+
+@router.get("/{dataset_id}/categorized-heatmap")
+def get_categorized_heatmap(
+    dataset_id: str,
+    n_top_genes: int = Query(default=40, ge=1, le=200),
+):
+    df = load_fpkm_matrix(dataset_id)
+    if df is None:
+        raise HTTPException(status_code=404, detail="FPKM matrix not found")
+
+    samples = list(df.columns)
+    categories = _load_categories()
+    active_cats = [c for c in categories if c.get("active", True)]
+
+    saved_meta = _load_metadata(dataset_id)
+    if saved_meta:
+        grouping = _grouping_from_metadata(samples, saved_meta)
+    else:
+        grouping = _infer_groups(samples)
+
+    result_categories = []
+    for cat in active_cats:
+        cat_genes = [g for g in cat["genes"] if g in df.index]
+        if not cat_genes:
+            result_categories.append({
+                "name": cat["name"],
+                "genes": [],
+                "z_scores": [],
+                "fpkm_labels": [],
+            })
+            continue
+
+        # Select top N by variance
+        sub = df.loc[cat_genes]
+        variances = sub.var(axis=1, ddof=1)
+        n_select = min(n_top_genes, len(cat_genes))
+        selected = variances.nlargest(n_select).index.tolist()
+
+        mat = sub.loc[selected].values.astype(float)
+        zmat = _compute_z_scores(mat)
+
+        result_categories.append({
+            "name": cat["name"],
+            "genes": selected,
+            "z_scores": zmat.tolist(),
+            "fpkm_labels": [[f"{v:.1f}" for v in row] for row in mat.tolist()],
+        })
+
+    return {
+        "samples": samples,
+        "grouping": grouping,
+        "categories": result_categories,
+    }
+
+
+class RCategoryHeatmapParams(BaseModel):
+    n_top_genes: int = 40
+
+
+@router.post("/{dataset_id}/render-r-category-heatmaps")
+def render_r_category_heatmaps(dataset_id: str, params: RCategoryHeatmapParams):
+    d = dataset_dir(dataset_id)
+    fpkm_path = os.path.join(d, "fpkm_matrix.csv")
+    if not os.path.exists(fpkm_path):
+        raise HTTPException(status_code=404, detail="FPKM matrix not found")
+
+    categories = _load_categories()
+    active_cats = [c for c in categories if c.get("active", True)]
+    if not active_cats:
+        raise HTTPException(status_code=422, detail="No active categories defined")
+
+    meta_path = _metadata_path(dataset_id)
+
+    params_path = os.path.join(d, "r_cat_heatmap_params.json")
+    out_prefix = os.path.join(d, "r_cat_heatmap")
+
+    with open(params_path, "w") as f:
+        json.dump(
+            {
+                "fpkm_path": fpkm_path,
+                "metadata_path": meta_path if os.path.exists(meta_path) else None,
+                "categories": [{"name": c["name"], "genes": c["genes"]} for c in active_cats],
+                "n_top_genes": params.n_top_genes,
+                "out_prefix": out_prefix,
+            },
+            f,
+            indent=2,
+        )
+
+    try:
+        cmd = _find_rscript() + [
+            os.path.abspath(R_CATEGORY_HEATMAP_SCRIPT),
+            params_path,
+        ]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"R script failed:\n{result.stderr[-3000:]}",
+        )
+
+    png_path = out_prefix + "_combined.png"
+    if not os.path.exists(png_path):
+        raise HTTPException(
+            status_code=500, detail="R script ran but produced no combined PNG output"
+        )
+
+    return FileResponse(png_path, media_type="image/png", filename="category_heatmaps.png")
