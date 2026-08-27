@@ -85,7 +85,7 @@ export default function PCASection({ projectId, projectName }) {
           <input
             type="number"
             value={nGenes}
-            min={10}
+            min={100}
             max={5000}
             step={100}
             onChange={e => setNGenes(Number(e.target.value))}

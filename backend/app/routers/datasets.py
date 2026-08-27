@@ -346,18 +346,27 @@ def _compute_vst_pca(
     output_json_path = os.path.join(d, "vst_pca_result.json")
     params_path = os.path.join(d, "vst_pca_params.json")
 
+    new_params = {
+        "counts_csv_path": counts_path,
+        "metadata": metadata,
+        "n_genes": n_genes,
+        "output_json_path": output_json_path,
+        "meta_inferred": meta_inferred,
+    }
+
+    # Return cached result when params are identical and output exists — skips the 60s R run
+    if os.path.exists(params_path) and os.path.exists(output_json_path):
+        try:
+            with open(params_path) as f:
+                cached_params = json.load(f)
+            if cached_params == new_params:
+                with open(output_json_path) as f:
+                    return json.load(f)
+        except Exception:
+            pass  # stale or malformed cache — fall through to re-run
+
     with open(params_path, "w") as f:
-        json.dump(
-            {
-                "counts_csv_path": counts_path,
-                "metadata": metadata,
-                "n_genes": n_genes,
-                "output_json_path": output_json_path,
-                "meta_inferred": meta_inferred,
-            },
-            f,
-            indent=2,
-        )
+        json.dump(new_params, f, indent=2)
 
     try:
         cmd = _find_rscript() + [os.path.abspath(R_VST_PCA_SCRIPT), params_path]
