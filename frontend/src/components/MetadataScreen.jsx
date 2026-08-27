@@ -1,11 +1,20 @@
-import { useEffect, useState } from 'react'
-import { getProjectSamples, saveProjectMetadata } from '../api/client'
+import { useEffect, useState, useMemo } from 'react'
+import { getProjectSamples, saveProjectMetadata, runDeseq2 } from '../api/client'
 import SampleMetaPanel from './SampleMetaPanel'
 
 export default function MetadataScreen({ project, onContinue }) {
   const [samplesData, setSamplesData] = useState(null)
   const [loadError, setLoadError] = useState(null)
   const [saved, setSaved] = useState(false)
+  const [currentEdits, setCurrentEdits] = useState(null)
+
+  const [refLevel, setRefLevel] = useState('')
+  const [cmpLevel, setCmpLevel] = useState('')
+  const [deseqRunning, setDeseqRunning] = useState(false)
+  const [deseqError, setDeseqError] = useState(null)
+  const [deseqDone, setDeseqDone] = useState(false)
+
+  const hasRawCounts = project.capabilities?.has_raw_counts
 
   useEffect(() => {
     getProjectSamples(project.project_id)
@@ -13,8 +22,51 @@ export default function MetadataScreen({ project, onContinue }) {
       .catch(e => setLoadError(e.message))
   }, [project.project_id])
 
-  function handleSaved() {
-    setSaved(true)
+  const conditionLevels = useMemo(() => {
+    if (!currentEdits) return []
+    const lvls = [
+      ...new Set(
+        Object.values(currentEdits)
+          .map(e => e.condition)
+          .filter(Boolean)
+      ),
+    ]
+    return lvls.sort()
+  }, [currentEdits])
+
+  // Reset pickers when condition levels change
+  useEffect(() => {
+    if (refLevel && !conditionLevels.includes(refLevel)) setRefLevel('')
+    if (cmpLevel && !conditionLevels.includes(cmpLevel)) setCmpLevel('')
+  }, [conditionLevels])
+
+  async function handleRunDeseq2() {
+    if (!refLevel || !cmpLevel || refLevel === cmpLevel || !currentEdits) return
+    setDeseqRunning(true)
+    setDeseqError(null)
+    setDeseqDone(false)
+    try {
+      await saveProjectMetadata(project.project_id, currentEdits)
+      await runDeseq2(project.project_id, refLevel, cmpLevel)
+      setDeseqDone(true)
+    } catch (e) {
+      setDeseqError(e.message)
+    } finally {
+      setDeseqRunning(false)
+    }
+  }
+
+  const canRunDeseq2 =
+    !!refLevel && !!cmpLevel && refLevel !== cmpLevel && !deseqRunning && !!currentEdits
+
+  const selectStyle = {
+    padding: '0.3rem 0.5rem',
+    border: '1px solid #d1d5db',
+    borderRadius: 4,
+    fontSize: '0.875em',
+    fontFamily: 'inherit',
+    background: '#fff',
+    minWidth: 140,
   }
 
   return (
@@ -57,8 +109,97 @@ export default function MetadataScreen({ project, onContinue }) {
           <SampleMetaPanel
             samplesData={samplesData}
             onSave={(edits) => saveProjectMetadata(project.project_id, edits)}
-            onSaved={handleSaved}
+            onSaved={() => setSaved(true)}
+            onEditsChange={setCurrentEdits}
           />
+        )}
+
+        {/* DESeq2 contrast section — only when project has raw counts */}
+        {hasRawCounts && samplesData && (
+          <div style={{
+            marginTop: '1.5rem',
+            borderTop: '1px solid #e5e7eb',
+            paddingTop: '1.5rem',
+          }}>
+            <div style={{ fontSize: '0.9em', fontWeight: 600, color: '#111827', marginBottom: '0.75rem' }}>
+              DESeq2 contrast
+            </div>
+
+            {conditionLevels.length < 2 ? (
+              <p style={{ fontSize: '0.85em', color: '#6b7280' }}>
+                Enter at least 2 distinct condition labels above to configure the contrast.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.8em', fontWeight: 500, color: '#374151' }}>Reference level</span>
+                  <select value={refLevel} onChange={e => setRefLevel(e.target.value)} style={selectStyle}>
+                    <option value="">— choose —</option>
+                    {conditionLevels.map(l => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.8em', fontWeight: 500, color: '#374151' }}>Comparison level</span>
+                  <select value={cmpLevel} onChange={e => setCmpLevel(e.target.value)} style={selectStyle}>
+                    <option value="">— choose —</option>
+                    {conditionLevels
+                      .filter(l => l !== refLevel)
+                      .map(l => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                  </select>
+                </label>
+                <button
+                  onClick={handleRunDeseq2}
+                  disabled={!canRunDeseq2}
+                  style={{
+                    padding: '0.45rem 1.1rem',
+                    background: canRunDeseq2 ? '#16a34a' : '#9ca3af',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 5,
+                    fontSize: '0.9em',
+                    fontWeight: 600,
+                    cursor: canRunDeseq2 ? 'pointer' : 'default',
+                    alignSelf: 'flex-end',
+                  }}
+                >
+                  {deseqRunning ? 'Running DESeq2…' : 'Run DESeq2'}
+                </button>
+              </div>
+            )}
+
+            {deseqRunning && (
+              <p style={{ fontSize: '0.82em', color: '#6b7280', marginTop: '0.6rem' }}>
+                DESeq2 is running — this may take several minutes. Do not close this page.
+              </p>
+            )}
+            {deseqDone && (
+              <p style={{ fontSize: '0.85em', color: '#16a34a', marginTop: '0.5rem' }}>
+                ✓ DESeq2 complete. Volcano and Gene Category Plots will be available on the dashboard.
+              </p>
+            )}
+            {deseqError && (
+              <div style={{
+                marginTop: '0.75rem',
+                padding: '0.6rem 0.75rem',
+                background: '#fef2f2',
+                border: '1px solid #fca5a5',
+                borderRadius: 5,
+                color: '#dc2626',
+                fontSize: '0.8em',
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                maxHeight: 220,
+                overflowY: 'auto',
+              }}>
+                <strong style={{ fontFamily: 'system-ui, sans-serif' }}>DESeq2 error:</strong>
+                {'\n'}{deseqError}
+              </div>
+            )}
+          </div>
         )}
 
         <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem' }}>

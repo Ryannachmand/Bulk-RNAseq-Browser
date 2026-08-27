@@ -8,6 +8,9 @@ export async function createProject(name, files) {
   if (files.fpkm) form.append('fpkm_file', files.fpkm)
   if (files.de) form.append('de_file', files.de)
   if (files.pathway) form.append('pathway_file', files.pathway)
+  if (files.rawCounts) form.append('raw_counts_file', files.rawCounts)
+  if (files.starFolder) form.append('star_folder_path', files.starFolder)
+  if (files.species) form.append('species', files.species)
   const res = await fetch(`${BASE}/projects`, { method: 'POST', body: form })
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Failed to create project')
@@ -188,6 +191,28 @@ export async function renderProjectRPathwayBarplot(projectId, { topN = 20, plotT
 export async function checkHealth() {
   const res = await fetch(`${BASE}/health`)
   if (!res.ok) throw new Error('unreachable')
+  return res.json()
+}
+
+export async function getConditionLevels(projectId) {
+  const res = await fetch(`${BASE}/projects/${projectId}/condition-levels`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to get condition levels')
+  }
+  return res.json()
+}
+
+export async function runDeseq2(projectId, referenceLevel, comparisonLevel) {
+  const res = await fetch(`${BASE}/projects/${projectId}/run-deseq2`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reference_level: referenceLevel, comparison_level: comparisonLevel }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'DESeq2 run failed')
+  }
   return res.json()
 }
 

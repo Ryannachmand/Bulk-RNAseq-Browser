@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
-export default function SampleMetaPanel({ samplesData, onSave, onSaved }) {
+export default function SampleMetaPanel({ samplesData, onSave, onSaved, onEditsChange }) {
   const { samples, metadata } = samplesData
   const anyInferred = Object.values(metadata).some(m => m.inferred)
 
@@ -12,6 +12,11 @@ export default function SampleMetaPanel({ samplesData, onSave, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const [saveOk, setSaveOk] = useState(false)
+
+  // Notify parent of current edits (for condition-level pickers, etc.)
+  useEffect(() => {
+    if (onEditsChange) onEditsChange(edits)
+  }, [edits])
 
   function handleChange(sample, field, value) {
     setEdits(prev => ({ ...prev, [sample]: { ...prev[sample], [field]: value } }))

@@ -13,16 +13,20 @@ from pydantic import BaseModel
 from app.parsers.de_table import DetectionError, parse_de_table
 from app.parsers.fpkm_matrix import FPKMParseError, parse_fpkm_matrix
 from app.parsers.pathway_table import PathwayParseError, parse_pathway_table
+from app.parsers.raw_counts import RawCountsParseError, parse_raw_counts_matrix
+from app.parsers.star_folder import StarFolderParseError, parse_star_folder
 from app.storage import (
     dataset_dir,
     load_dataset,
     load_fpkm_matrix,
     load_pathway_results,
     load_project,
+    load_raw_counts,
     save_dataset,
     save_fpkm_matrix,
     save_pathway_results,
     save_project,
+    save_raw_counts,
 )
 from app.routers.datasets import (
     _compute_heatmap_data,
@@ -49,15 +53,27 @@ from app.routers.datasets import (
 
 router = APIRouter(prefix="/projects")
 
+# Hardcoded for this specific machine — this app runs on one host; not a config file.
+GTF_PATHS = {
+    "human": "/home/ryannachman/programs/STAR-2.7.11b/refs/downloads/gencode.v46.primary_assembly.annotation.gtf",
+    "mouse": "/home/ryannachman/programs/STAR-2.7.11b/refs/downloads/gencode.vM35.primary_assembly.annotation.gtf",
+}
+
+R_DESEQ2_SCRIPT = os.path.join(
+    os.path.dirname(__file__), "..", "..", "r_scripts", "run_deseq2.R"
+)
+
 
 def _capabilities(project: dict) -> dict:
     has_de = project.get("de_dataset_id") is not None
     has_fpkm = project.get("fpkm_dataset_id") is not None
     has_pathway = project.get("pathway_dataset_id") is not None
+    has_raw_counts = project.get("raw_counts_dataset_id") is not None
     return {
         "has_de": has_de,
         "has_fpkm": has_fpkm,
         "has_pathway": has_pathway,
+        "has_raw_counts": has_raw_counts,
         "tabs": {
             "volcano": has_de,
             "heatmap": has_fpkm,
@@ -74,14 +90,27 @@ async def create_project(
     fpkm_file: Optional[UploadFile] = File(None),
     de_file: Optional[UploadFile] = File(None),
     pathway_file: Optional[UploadFile] = File(None),
+    raw_counts_file: Optional[UploadFile] = File(None),
+    star_folder_path: Optional[str] = Form(None),
+    species: Optional[str] = Form(None),
 ):
-    if not any([fpkm_file, de_file, pathway_file]):
+    has_raw = raw_counts_file is not None or bool(
+        star_folder_path and star_folder_path.strip()
+    )
+    if not any([fpkm_file, de_file, pathway_file]) and not has_raw:
         raise HTTPException(status_code=422, detail="At least one file is required")
+
+    if has_raw and (not species or species not in GTF_PATHS):
+        raise HTTPException(
+            status_code=422,
+            detail="species must be 'human' or 'mouse' when providing raw counts",
+        )
 
     project_id = str(uuid.uuid4())
     fpkm_dataset_id = None
     de_dataset_id = None
     pathway_dataset_id = None
+    raw_counts_dataset_id = None
 
     if fpkm_file:
         contents = await fpkm_file.read()
@@ -110,6 +139,24 @@ async def create_project(
         pathway_dataset_id = str(uuid.uuid4())
         save_pathway_results(pathway_dataset_id, df, meta)
 
+    if raw_counts_file:
+        contents = await raw_counts_file.read()
+        try:
+            counts_df = parse_raw_counts_matrix(
+                contents, filename=raw_counts_file.filename or ""
+            )
+        except RawCountsParseError as e:
+            raise HTTPException(status_code=422, detail=f"Raw counts file: {e}")
+        raw_counts_dataset_id = str(uuid.uuid4())
+        save_raw_counts(raw_counts_dataset_id, counts_df)
+    elif star_folder_path and star_folder_path.strip():
+        try:
+            counts_df = parse_star_folder(star_folder_path.strip())
+        except StarFolderParseError as e:
+            raise HTTPException(status_code=422, detail=f"STAR folder: {e}")
+        raw_counts_dataset_id = str(uuid.uuid4())
+        save_raw_counts(raw_counts_dataset_id, counts_df)
+
     project = {
         "project_id": project_id,
         "name": name,
@@ -117,6 +164,8 @@ async def create_project(
         "de_dataset_id": de_dataset_id,
         "fpkm_dataset_id": fpkm_dataset_id,
         "pathway_dataset_id": pathway_dataset_id,
+        "raw_counts_dataset_id": raw_counts_dataset_id,
+        "raw_counts_species": species if has_raw else None,
         "metadata": {},
     }
     save_project(project_id, project)
@@ -143,12 +192,20 @@ def get_project_samples(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     fpkm_id = project.get("fpkm_dataset_id")
-    if not fpkm_id:
-        raise HTTPException(status_code=422, detail="Project has no FPKM dataset")
+    raw_counts_id = project.get("raw_counts_dataset_id")
 
-    df = load_fpkm_matrix(fpkm_id)
-    if df is None:
-        raise HTTPException(status_code=404, detail="FPKM matrix not found")
+    if fpkm_id:
+        df = load_fpkm_matrix(fpkm_id)
+        if df is None:
+            raise HTTPException(status_code=404, detail="FPKM matrix not found")
+    elif raw_counts_id:
+        df = load_raw_counts(raw_counts_id)
+        if df is None:
+            raise HTTPException(status_code=404, detail="Raw counts matrix not found")
+    else:
+        raise HTTPException(
+            status_code=422, detail="Project has no FPKM or raw counts dataset"
+        )
 
     samples = list(df.columns)
     saved_meta = project.get("metadata") or {}
@@ -184,6 +241,18 @@ def save_project_metadata(project_id: str, body: ProjectMetadataBody):
     project["metadata"] = body.metadata
     save_project(project_id, project)
     return {"saved": True}
+
+
+@router.get("/{project_id}/condition-levels")
+def get_condition_levels(project_id: str):
+    project = load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    metadata = project.get("metadata") or {}
+    conditions = sorted(
+        {v.get("condition", "") for v in metadata.values() if v.get("condition")}
+    )
+    return {"condition_levels": conditions}
 
 
 @router.get("/{project_id}/heatmap-data")
@@ -669,3 +738,84 @@ def render_project_r_pathway_barplot(project_id: str, params: RPathwayBarplotPar
         raise HTTPException(status_code=500, detail="R script ran but produced no PNG output")
 
     return FileResponse(png_path, media_type="image/png", filename="pathway_barplot.png")
+
+
+# ── DESeq2 endpoints ──────────────────────────────────────────────────────────
+
+class RunDeseq2Body(BaseModel):
+    reference_level: str
+    comparison_level: str
+
+
+@router.post("/{project_id}/run-deseq2")
+def run_project_deseq2(project_id: str, body: RunDeseq2Body):
+    project = load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    raw_counts_id = project.get("raw_counts_dataset_id")
+    if not raw_counts_id:
+        raise HTTPException(status_code=422, detail="Project has no raw counts dataset")
+
+    species = project.get("raw_counts_species")
+    gtf_path = GTF_PATHS.get(species)
+    if not gtf_path:
+        raise HTTPException(status_code=422, detail=f"Unknown species: {species!r}")
+
+    metadata = project.get("metadata") or {}
+    if not metadata:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Sample metadata not saved. Save metadata on Screen 2 before running DESeq2."
+            ),
+        )
+
+    d = dataset_dir(raw_counts_id)
+    counts_csv_path = os.path.join(d, "raw_counts.csv")
+    if not os.path.exists(counts_csv_path):
+        raise HTTPException(status_code=404, detail="Raw counts matrix file not found")
+
+    output_csv_path = os.path.join(d, "deseq2_results.csv")
+    params = {
+        "counts_csv_path": counts_csv_path,
+        "metadata": metadata,
+        "reference_level": body.reference_level,
+        "comparison_level": body.comparison_level,
+        "gtf_path": gtf_path,
+        "output_csv_path": output_csv_path,
+    }
+    params_path = os.path.join(d, "deseq2_params.json")
+    with open(params_path, "w") as f:
+        json.dump(params, f, indent=2)
+
+    try:
+        cmd = _find_rscript() + [os.path.abspath(R_DESEQ2_SCRIPT), params_path]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"DESeq2 failed:\n{result.stderr[-4000:]}",
+        )
+
+    if not os.path.exists(output_csv_path):
+        raise HTTPException(
+            status_code=500,
+            detail="DESeq2 script ran but produced no output file",
+        )
+
+    try:
+        de_df = pd.read_csv(output_csv_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not read DESeq2 output: {e}")
+
+    de_id = str(uuid.uuid4())
+    save_dataset(de_id, de_df)
+
+    project["de_dataset_id"] = de_id
+    save_project(project_id, project)
+
+    return {"de_dataset_id": de_id, "capabilities": _capabilities(project)}

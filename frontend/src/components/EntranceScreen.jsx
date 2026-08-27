@@ -34,23 +34,69 @@ function FileSlot({ label, accept, file, onFile, disabled }) {
   )
 }
 
+function PathSlot({ label, value, onChange }) {
+  return (
+    <div style={{
+      border: `2px dashed ${value.trim() ? '#16a34a' : '#d1d5db'}`,
+      borderRadius: 6,
+      padding: '0.75rem 1rem',
+      background: value.trim() ? '#f0fdf4' : '#fff',
+    }}>
+      <div style={{ fontSize: '0.85em', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+        {label}
+      </div>
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="/path/to/star/output/folder"
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          border: '1px solid #d1d5db',
+          borderRadius: 4,
+          padding: '0.3rem 0.5rem',
+          fontSize: '0.83em',
+          fontFamily: 'monospace',
+          color: '#374151',
+        }}
+      />
+      <div style={{ fontSize: '0.75em', color: '#9ca3af', marginTop: 3 }}>
+        Server-side path to folder containing *.ReadsPerGene.out.tab files
+      </div>
+    </div>
+  )
+}
+
 export default function EntranceScreen({ connected, onProjectCreated }) {
   const [name, setName] = useState('')
   const [fpkmFile, setFpkmFile] = useState(null)
   const [deFile, setDeFile] = useState(null)
   const [pathwayFile, setPathwayFile] = useState(null)
+  const [rawCountsFile, setRawCountsFile] = useState(null)
+  const [starFolderPath, setStarFolderPath] = useState('')
+  const [species, setSpecies] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState(null)
 
-  const hasFile = !!(fpkmFile || deFile || pathwayFile)
-  const canSubmit = connected && name.trim().length > 0 && hasFile && !creating
+  const hasRawCounts = !!(rawCountsFile || starFolderPath.trim())
+  const hasFile = !!(fpkmFile || deFile || pathwayFile || hasRawCounts)
+  const speciesOk = !hasRawCounts || species !== ''
+  const canSubmit = connected && name.trim().length > 0 && hasFile && speciesOk && !creating
 
   async function handleCreate() {
     if (!canSubmit) return
     setCreating(true)
     setError(null)
     try {
-      const proj = await createProject(name.trim(), { fpkm: fpkmFile, de: deFile, pathway: pathwayFile })
+      const proj = await createProject(name.trim(), {
+        fpkm: fpkmFile,
+        de: deFile,
+        pathway: pathwayFile,
+        rawCounts: rawCountsFile,
+        starFolder: starFolderPath.trim() || null,
+        species: hasRawCounts ? species : null,
+      })
       onProjectCreated(proj)
     } catch (e) {
       setError(e.message)
@@ -61,6 +107,17 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
 
   const statusColor = connected === null ? '#6b7280' : connected ? '#16a34a' : '#dc2626'
   const statusText = connected === null ? 'Checking backend…' : connected ? 'Backend connected' : 'Backend unreachable'
+
+  const selectStyle = {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '0.35rem 0.5rem',
+    border: '1px solid #d1d5db',
+    borderRadius: 4,
+    fontSize: '0.9em',
+    fontFamily: 'inherit',
+    background: '#fff',
+  }
 
   return (
     <div style={{
@@ -94,7 +151,7 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="e.g. Shashank FPKM Analysis"
+            placeholder="e.g. Shashank DESeq2 Analysis"
             style={{
               width: '100%',
               boxSizing: 'border-box',
@@ -135,8 +192,40 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
               onFile={setPathwayFile}
               disabled={false}
             />
-            <FileSlot label="Raw counts matrix" accept=".csv" file={null} onFile={() => {}} disabled={true} />
-            <FileSlot label="STAR output folder" accept="" file={null} onFile={() => {}} disabled={true} />
+            <FileSlot
+              label="Raw counts matrix"
+              accept=".csv,.tsv"
+              file={rawCountsFile}
+              onFile={setRawCountsFile}
+              disabled={false}
+            />
+            <PathSlot
+              label="STAR output folder"
+              value={starFolderPath}
+              onChange={setStarFolderPath}
+            />
+
+            {/* Species selector — required when raw counts or STAR folder is provided */}
+            <div style={{
+              padding: '0.65rem 1rem',
+              border: `1px solid ${hasRawCounts && !species ? '#fca5a5' : '#e5e7eb'}`,
+              borderRadius: 6,
+              background: hasRawCounts ? '#fafafa' : '#f9fafb',
+            }}>
+              <label style={{ display: 'block', fontSize: '0.85em', fontWeight: 600, color: hasRawCounts ? '#374151' : '#9ca3af', marginBottom: 4 }}>
+                Species{hasRawCounts ? ' *' : ''}
+              </label>
+              <select
+                value={species}
+                onChange={e => setSpecies(e.target.value)}
+                disabled={!hasRawCounts}
+                style={{ ...selectStyle, color: hasRawCounts ? '#374151' : '#9ca3af' }}
+              >
+                <option value="">— required for raw counts —</option>
+                <option value="human">Human (GRCh38)</option>
+                <option value="mouse">Mouse (GRCm39)</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -175,6 +264,11 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
         {!hasFile && name.trim() && (
           <p style={{ textAlign: 'center', margin: '0.5rem 0 0', fontSize: '0.8em', color: '#6b7280' }}>
             Select at least one data file above.
+          </p>
+        )}
+        {hasRawCounts && !species && (
+          <p style={{ textAlign: 'center', margin: '0.5rem 0 0', fontSize: '0.8em', color: '#dc2626' }}>
+            Select a species for raw counts data.
           </p>
         )}
       </div>

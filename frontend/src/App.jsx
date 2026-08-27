@@ -47,7 +47,7 @@ export default function App() {
 
   function handleProjectCreated(proj) {
     setProject(proj)
-    if (proj.capabilities.has_fpkm) {
+    if (proj.capabilities.has_fpkm || proj.capabilities.has_raw_counts) {
       setScreen(SCREEN.METADATA)
     } else {
       window.history.pushState({}, '', `/project/${proj.project_id}/dashboard`)
@@ -56,9 +56,16 @@ export default function App() {
     }
   }
 
-  function handleMetadataDone() {
+  async function handleMetadataDone() {
     window.history.pushState({}, '', `/project/${project.project_id}/dashboard`)
-    setActiveTab(firstAvailableTab(project.capabilities))
+    try {
+      // Re-fetch to pick up any de_dataset_id written by DESeq2 during metadata screen
+      const freshProj = await getProject(project.project_id)
+      setProject(freshProj)
+      setActiveTab(firstAvailableTab(freshProj.capabilities))
+    } catch {
+      setActiveTab(firstAvailableTab(project.capabilities))
+    }
     setScreen(SCREEN.DASHBOARD)
   }
 
