@@ -35,8 +35,9 @@ export default function VolcanoPlot({ rows, padjCutoff, lfcCutoff, onPadjChange,
         }
       }
 
+      const label = r.symbol && !r.symbol.startsWith('ENSG') ? r.symbol : r.gene
       texts.push(
-        `<b>${r.gene}</b><br>log2FC: ${lfc.toFixed(3)}<br>padj: ${padj.toExponential(2)}${fpkmLine}`
+        `<b>${label}</b><br>log2FC: ${lfc.toFixed(3)}<br>padj: ${padj.toExponential(2)}${fpkmLine}`
       )
 
       const sig = padj < padjCutoff && Math.abs(lfc) > lfcCutoff
