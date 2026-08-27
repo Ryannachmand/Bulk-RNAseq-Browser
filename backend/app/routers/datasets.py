@@ -64,6 +64,16 @@ R_PATHWAY_BARPLOT_SCRIPT = os.path.join(
     "..", "..", "r_scripts", "render_pathway_barplot.R",
 )
 
+R_VST_PCA_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "r_scripts", "compute_vst_pca.R",
+)
+
+R_COMPUTE_FPKM_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "r_scripts", "compute_fpkm.R",
+)
+
 
 def _find_rscript() -> list[str]:
     """Return the command prefix to run Rscript in the r-env conda environment."""
@@ -303,6 +313,56 @@ def _compute_pca(dataset_id: str, n_genes: int = 500, override_metadata: dict | 
         "corrected": corrected,
         "n_genes_used": int(len(top_idx)),
     }
+
+
+def _compute_vst_pca(
+    raw_counts_id: str,
+    metadata: dict,
+    n_genes: int = 500,
+    meta_inferred: bool = False,
+) -> dict | None:
+    """Run VST-based PCA via compute_vst_pca.R.
+
+    Returns a dict with the same shape as _compute_pca():
+      {raw: {...}, corrected: null|{...}, n_genes_used: int, pca_method: 'VST'}
+    Returns None if the raw counts file does not exist.
+    Raises RuntimeError on R script failure.
+    """
+    d = dataset_dir(raw_counts_id)
+    counts_path = os.path.join(d, "raw_counts.csv")
+    if not os.path.exists(counts_path):
+        return None
+
+    output_json_path = os.path.join(d, "vst_pca_result.json")
+    params_path = os.path.join(d, "vst_pca_params.json")
+
+    with open(params_path, "w") as f:
+        json.dump(
+            {
+                "counts_csv_path": counts_path,
+                "metadata": metadata,
+                "n_genes": n_genes,
+                "output_json_path": output_json_path,
+                "meta_inferred": meta_inferred,
+            },
+            f,
+            indent=2,
+        )
+
+    try:
+        cmd = _find_rscript() + [os.path.abspath(R_VST_PCA_SCRIPT), params_path]
+    except FileNotFoundError as e:
+        raise RuntimeError(str(e))
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError(f"VST PCA R script failed:\n{result.stderr[-2000:]}")
+
+    if not os.path.exists(output_json_path):
+        raise RuntimeError("VST PCA script ran but produced no output JSON")
+
+    with open(output_json_path) as f:
+        return json.load(f)
 
 
 # ── DE table upload & volcano endpoints ──────────────────────────────────────

@@ -76,7 +76,7 @@ p <- ggplot(pca_df, aes(x = x, y = y, color = condition, label = label)) +
   xlab(x_label) +
   ylab(y_label) +
   ggtitle(plot_title) +
-  labs(caption = "PCA computed from FPKM (log2-transformed), not VST") +
+  labs(caption = if (isTRUE(data$pca_method == "VST")) "PCA computed from VST (DESeq2)" else "PCA computed from FPKM (log2-transformed)") +
   theme_bw() +
   theme(
     plot.title   = element_text(hjust = 0.5, size = 14, face = "bold"),
