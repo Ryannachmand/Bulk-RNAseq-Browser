@@ -21,14 +21,13 @@ const GROUP_COLORS = [
   '#A6D854', '#FFD92F', '#E5C494', '#B3B3B3',
 ]
 
-export default function HeatmapPlot({ data }) {
+// panelHeight: when provided, enables responsive-width mode (grid usage).
+// When absent, falls back to fixed pixel sizing (standalone usage).
+export default function HeatmapPlot({ data, panelHeight }) {
   const { genes, samples, z_scores, fpkm_labels, grouping } = data
 
   const nGenes   = genes.length
   const nSamples = samples.length
-
-  // Cell text font size — scale down for larger heatmaps
-  const textFontSize = Math.max(6, Math.min(11, Math.floor(240 / nGenes)))
 
   // ── Build heatmap traces ──────────────────────────────────────────────────
 
@@ -69,7 +68,7 @@ export default function HeatmapPlot({ data }) {
     })
   }
 
-  // Main heatmap: z-score colors + FPKM label text
+  // Main heatmap: z-score colors; FPKM values visible on hover only
   traces.push({
     type: 'heatmap',
     z: z_scores,
@@ -79,8 +78,6 @@ export default function HeatmapPlot({ data }) {
     zmin: -3,
     zmax: 3,
     text: fpkm_labels,
-    texttemplate: '%{text}',
-    textfont: { size: textFontSize, color: '#333333' },
     showscale: true,
     colorbar: {
       title: { text: 'z-score', side: 'right' },
@@ -99,15 +96,27 @@ export default function HeatmapPlot({ data }) {
   const hasBar = grouping.detected
   const mainDomainTop = hasBar ? 0.90 : 1.0
 
-  const plotHeight = Math.max(350, Math.min(900, nGenes * 22 + 100))
-  const plotWidth  = Math.max(500, Math.min(1100, nSamples * 55 + 200))
+  const isGridMode = panelHeight !== undefined
+
+  const standaloneHeight = Math.max(350, Math.min(900, nGenes * 22 + 100))
+  const standaloneWidth  = Math.max(500, Math.min(1100, nSamples * 55 + 200))
+
+  const plotHeight = isGridMode ? panelHeight : standaloneHeight
+
+  // Scale row label font to available vertical space so Plotly never skips ticks.
+  const heatmapPx = plotHeight * mainDomainTop - 20 - 150  // top+bottom margin
+  const rowPx = Math.max(1, heatmapPx / nGenes)
+  const rowTickSize = Math.max(9, Math.min(16, Math.floor(rowPx * 0.9)))
 
   const layout = {
-    // Main heatmap y-axis: first gene at top
+    // Main heatmap y-axis: force every gene label, scale font to row height
     yaxis: {
       domain: [0, mainDomainTop],
       autorange: 'reversed',
-      tickfont: { size: 12 },
+      tickmode: 'array',
+      tickvals: genes,
+      ticktext: genes,
+      tickfont: { size: rowTickSize },
       fixedrange: true,
     },
     // Annotation bar y-axis (only used when grouping detected)
@@ -125,37 +134,24 @@ export default function HeatmapPlot({ data }) {
       fixedrange: true,
     },
     height: plotHeight,
-    width:  plotWidth,
-    margin: { t: 20, b: 90, l: 130, r: 80 },
+    // In grid mode omit width so Plotly fills the container; standalone keeps fixed px
+    ...(isGridMode ? {} : { width: standaloneWidth }),
+    margin: { t: 20, b: 150, l: 130, r: 80 },
     paper_bgcolor: '#ffffff',
     plot_bgcolor:  '#ffffff',
   }
 
-  const groupingNote = !grouping.detected
-    ? 'Sample grouping not detected — column names do not share a common prefix with a trailing replicate suffix (e.g. CTRL_1, CTRL_2). No annotation bar shown.'
-    : null
-
   return (
     <div>
-      {groupingNote && (
-        <p style={{
-          margin: '0 0 0.5rem',
-          padding: '0.4rem 0.75rem',
-          background: '#fffbe6',
-          border: '1px solid #e6c700',
-          borderRadius: 4,
-          fontSize: '0.85em',
-          color: '#666',
-        }}>
-          {groupingNote}
-        </p>
-      )}
-
       <Plot
         data={traces}
         layout={layout}
-        config={{ responsive: false, displayModeBar: true, scrollZoom: false }}
-        style={{ display: 'block' }}
+        config={{ responsive: isGridMode, displayModeBar: true, scrollZoom: false }}
+        useResizeHandler={isGridMode}
+        style={isGridMode
+          ? { display: 'block', width: '100%', height: plotHeight + 'px' }
+          : { display: 'block' }
+        }
       />
     </div>
   )

@@ -149,9 +149,9 @@ for (cat_name in names(hmaps)) {
   safe <- gsub("[^A-Za-z0-9]+", "_", cat_name)
   h <- hmaps[[cat_name]]
 
-  # Use per-panel dimensions consistent with build_panel()
+  # Width scales with sample count so FPKM labels remain legible.
   h_in <- max(8, N_TOP * 0.5 + 4)
-  w_in <- 10
+  w_in <- max(10, ncol(fpkm) * 0.7 + 5)
 
   for (ext in c("png", "pdf")) {
     out_path <- paste0(out_prefix, "_", safe, ".", ext)
@@ -172,7 +172,7 @@ for (cat_name in names(hmaps)) {
 # they would at 300 dpi for the same physical figure size.
 ncols   <- 2
 nrows   <- ceiling(n_cats / ncols)
-panel_w <- 10
+panel_w <- max(10, ncol(fpkm) * 0.7 + 5)
 panel_h <- max(8, N_TOP * 0.5 + 4)
 total_w <- ncols * panel_w
 total_h <- nrows * panel_h

@@ -338,8 +338,8 @@ def get_project_volcano_data(project_id: str):
     df = load_dataset(de_id)
     if df is None:
         raise HTTPException(status_code=404, detail="DE dataset not found")
-    import json as _json
-    return _json.loads(df.to_json(orient="records"))
+    records = df.to_dict("records")
+    return [{k: (None if pd.isna(v) else v) for k, v in r.items()} for r in records]
 
 
 @router.post("/{project_id}/render-r-volcano")

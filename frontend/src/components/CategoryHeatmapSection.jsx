@@ -5,7 +5,7 @@ import { getProjectCategoryHeatmap, renderProjectRCategoryHeatmaps } from '../ap
 const TAB_PLOTLY = 'plotly'
 const TAB_R      = 'r'
 
-function CategoryPanel({ cat, samples, grouping }) {
+function CategoryPanel({ cat, samples, grouping, panelHeight }) {
   if (!cat.genes || cat.genes.length === 0) {
     return (
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 16, background: '#fafafa' }}>
@@ -25,15 +25,15 @@ function CategoryPanel({ cat, samples, grouping }) {
   }
 
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6 }}>
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, minWidth: 0 }}>
       <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: '0.9em', borderRadius: '6px 6px 0 0' }}>
         {cat.name}
         <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: 8, fontSize: '0.85em' }}>
           {cat.genes.length} genes
         </span>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <HeatmapPlot data={data} />
+      <div>
+        <HeatmapPlot data={data} panelHeight={panelHeight} />
       </div>
     </div>
   )
@@ -134,6 +134,11 @@ export default function CategoryHeatmapSection({ projectId }) {
             {loading && <p style={{ color: '#555' }}>Computing z-scores…</p>}
             {heatmapData && (() => {
               const active = heatmapData.categories.filter(c => c.genes && c.genes.length > 0)
+              const nCols = 2
+              const nRows = Math.max(1, Math.ceil(active.length / nCols))
+              // Give each panel at least 550px; viewport-fraction keeps single-row panels from
+              // being comically tall. Grid may scroll vertically — that's intentional.
+              const panelHeight = Math.max(550, Math.floor((window.innerHeight * 0.9) / nRows))
               return (
                 <div>
                   <p style={{ color: '#6b7280', fontSize: '0.82em', margin: '0 0 12px' }}>
@@ -141,7 +146,7 @@ export default function CategoryHeatmapSection({ projectId }) {
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                     {heatmapData.categories.map((cat, i) => (
-                      <CategoryPanel key={i} cat={cat} samples={heatmapData.samples} grouping={heatmapData.grouping} />
+                      <CategoryPanel key={i} cat={cat} samples={heatmapData.samples} grouping={heatmapData.grouping} panelHeight={panelHeight} />
                     ))}
                   </div>
                 </div>

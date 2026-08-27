@@ -325,8 +325,8 @@ def get_de_results(dataset_id: str):
     df = load_dataset(dataset_id)
     if df is None:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    import json as _json
-    return _json.loads(df.to_json(orient="records"))
+    records = df.to_dict("records")
+    return [{k: (None if pd.isna(v) else v) for k, v in r.items()} for r in records]
 
 
 class RVolcanoParams(BaseModel):
