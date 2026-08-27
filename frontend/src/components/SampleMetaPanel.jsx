@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { saveMetadata } from '../api/client'
 
-export default function SampleMetaPanel({ datasetId, samplesData, onSaved }) {
+export default function SampleMetaPanel({ samplesData, onSave, onSaved }) {
   const { samples, metadata } = samplesData
   const anyInferred = Object.values(metadata).some(m => m.inferred)
 
-  // Local editable state: {sampleName: {condition, batch}}
   const [edits, setEdits] = useState(() =>
     Object.fromEntries(
       samples.map(s => [s, { condition: metadata[s].condition, batch: metadata[s].batch }])
@@ -25,7 +23,7 @@ export default function SampleMetaPanel({ datasetId, samplesData, onSaved }) {
     setSaveError(null)
     setSaveOk(false)
     try {
-      await saveMetadata(datasetId, edits)
+      await onSave(edits)
       setSaveOk(true)
       onSaved()
     } catch (e) {
@@ -113,7 +111,7 @@ export default function SampleMetaPanel({ datasetId, samplesData, onSaved }) {
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
-        {saveOk && <span style={{ color: '#16a34a', fontSize: '0.85em' }}>Saved — PCA recomputed.</span>}
+        {saveOk && <span style={{ color: '#16a34a', fontSize: '0.85em' }}>Saved.</span>}
         {saveError && <span style={{ color: '#dc2626', fontSize: '0.85em' }}>{saveError}</span>}
       </div>
     </div>

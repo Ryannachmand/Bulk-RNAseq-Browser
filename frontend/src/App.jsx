@@ -1,242 +1,133 @@
 import { useEffect, useState } from 'react'
-import { checkHealth, getDeResults, uploadDataset, uploadFpkmMatrix } from './api/client'
-import UploadPanel from './components/UploadPanel'
-import VolcanoPlot from './components/VolcanoPlot'
-import RVolcanoPanel from './components/RVolcanoPanel'
+import { checkHealth, getProject } from './api/client'
+import EntranceScreen from './components/EntranceScreen'
+import MetadataScreen from './components/MetadataScreen'
 import HeatmapSection from './components/HeatmapSection'
 import PCASection from './components/PCASection'
+import VolcanoSection from './components/VolcanoSection'
 import GeneCategoryPlotsSection from './components/GeneCategoryPlotsSection'
 import PathwayBarplotSection from './components/PathwayBarplotSection'
 
-const FIG_VOLCANO   = 'volcano'
-const FIG_HEATMAP   = 'heatmap'
-const FIG_PCA       = 'pca'
-const FIG_CATEGORY  = 'category'
-const FIG_PATHWAY   = 'pathway'
+const SCREEN = { ENTRANCE: 'entrance', METADATA: 'metadata', DASHBOARD: 'dashboard' }
 
-const TAB_PLOTLY = 'plotly'
-const TAB_R      = 'r'
+function firstAvailableTab(caps) {
+  if (caps.tabs.heatmap) return 'heatmap'
+  if (caps.tabs.pca) return 'pca'
+  if (caps.tabs.volcano) return 'volcano'
+  if (caps.tabs.pathway_barplot) return 'pathway'
+  return 'heatmap'
+}
 
 export default function App() {
   const [connected, setConnected] = useState(null)
-  const [figureType, setFigureType] = useState(FIG_VOLCANO)
-
-  // ── Volcano state ────────────────────────────────────────────────────────
-  const [volcanoUploading, setVolcanoUploading] = useState(false)
-  const [volcanoError, setVolcanoError] = useState(null)
-  const [rows, setRows] = useState(null)
-  const [datasetId, setDatasetId] = useState(null)
-  const [volcanoTab, setVolcanoTab] = useState(TAB_PLOTLY)
-  const [padjCutoff, setPadjCutoff] = useState(0.05)
-  const [lfcCutoff, setLfcCutoff]   = useState(1)
-
-  // ── Heatmap state ────────────────────────────────────────────────────────
-  const [heatmapUploading, setHeatmapUploading] = useState(false)
-  const [heatmapError, setHeatmapError]         = useState(null)
-  const [heatmapId, setHeatmapId]               = useState(null)
-  const [heatmapSamples, setHeatmapSamples]     = useState(null)
+  const [screen, setScreen] = useState(SCREEN.ENTRANCE)
+  const [project, setProject] = useState(null)
+  const [activeTab, setActiveTab] = useState(null)
 
   useEffect(() => {
     checkHealth()
       .then(() => setConnected(true))
       .catch(() => setConnected(false))
+
+    // Restore from URL on load/refresh
+    const match = window.location.pathname.match(/^\/project\/([^/]+)\/dashboard$/)
+    if (match) {
+      getProject(match[1])
+        .then(proj => {
+          setProject(proj)
+          setActiveTab(firstAvailableTab(proj.capabilities))
+          setScreen(SCREEN.DASHBOARD)
+        })
+        .catch(() => {
+          window.history.replaceState({}, '', '/')
+        })
+    }
   }, [])
 
-  // ── Upload handlers ───────────────────────────────────────────────────────
-
-  async function handleVolcanoUpload(file) {
-    setVolcanoError(null)
-    setRows(null)
-    setDatasetId(null)
-    setVolcanoUploading(true)
-    try {
-      const { dataset_id } = await uploadDataset(file)
-      const data = await getDeResults(dataset_id)
-      setDatasetId(dataset_id)
-      setRows(data)
-      setVolcanoTab(TAB_PLOTLY)
-    } catch (e) {
-      setVolcanoError(e.message)
-    } finally {
-      setVolcanoUploading(false)
+  function handleProjectCreated(proj) {
+    setProject(proj)
+    if (proj.capabilities.has_fpkm) {
+      setScreen(SCREEN.METADATA)
+    } else {
+      window.history.pushState({}, '', `/project/${proj.project_id}/dashboard`)
+      setActiveTab(firstAvailableTab(proj.capabilities))
+      setScreen(SCREEN.DASHBOARD)
     }
   }
 
-  async function handleHeatmapUpload(file) {
-    setHeatmapError(null)
-    setHeatmapId(null)
-    setHeatmapSamples(null)
-    setHeatmapUploading(true)
-    try {
-      const { heatmap_id, samples } = await uploadFpkmMatrix(file)
-      setHeatmapId(heatmap_id)
-      setHeatmapSamples(samples)
-    } catch (e) {
-      setHeatmapError(e.message)
-    } finally {
-      setHeatmapUploading(false)
-    }
+  function handleMetadataDone() {
+    window.history.pushState({}, '', `/project/${project.project_id}/dashboard`)
+    setActiveTab(firstAvailableTab(project.capabilities))
+    setScreen(SCREEN.DASHBOARD)
   }
 
-  // ── Shared styles ─────────────────────────────────────────────────────────
+  if (screen === SCREEN.ENTRANCE) {
+    return <EntranceScreen connected={connected} onProjectCreated={handleProjectCreated} />
+  }
 
-  const statusColor = connected === null ? '#888' : connected ? '#2a9d2a' : '#cc2222'
-  const statusText  =
-    connected === null ? 'Checking backend…' :
-    connected ? 'Backend connected' : 'Backend unreachable'
+  if (screen === SCREEN.METADATA) {
+    return <MetadataScreen project={project} onContinue={handleMetadataDone} />
+  }
 
-  const figTabStyle = (active) => ({
-    padding: '0.5rem 1.4rem',
-    border: '2px solid ' + (active ? '#2563eb' : '#ccc'),
-    background: active ? '#2563eb' : '#f9f9f9',
-    color: active ? '#fff' : '#333',
+  // ── Dashboard ────────────────────────────────────────────────────────────────
+  const caps = project.capabilities
+
+  const tabBtnStyle = (key) => ({
+    padding: '0.5rem 1.25rem',
+    border: '2px solid ' + (activeTab === key ? '#2563eb' : '#d1d5db'),
+    background: activeTab === key ? '#2563eb' : '#fff',
+    color: activeTab === key ? '#fff' : '#374151',
     borderRadius: 4,
     cursor: 'pointer',
-    fontWeight: active ? 600 : 400,
-    fontSize: '0.95em',
-  })
-
-  const tabStyle = (active) => ({
-    padding: '0.35rem 1rem',
-    border: '1px solid #ccc',
-    borderBottom: active ? '1px solid #fff' : '1px solid #ccc',
-    background: active ? '#fff' : '#f5f5f5',
-    cursor: 'pointer',
-    fontWeight: active ? 600 : 400,
+    fontWeight: activeTab === key ? 600 : 400,
     fontSize: '0.9em',
-    marginBottom: -1,
-    position: 'relative',
   })
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 1100 }}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Bulk RNA-seq Browser</h1>
-      <p style={{ color: statusColor, marginTop: 0 }}>{statusText}</p>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', marginBottom: '0.25rem' }}>
+        <h1 style={{ margin: 0, fontSize: '1.4rem' }}>{project.name}</h1>
+        <span style={{ fontSize: '0.8em', color: '#6b7280' }}>Bulk RNA-seq Browser</span>
+      </div>
+      <p style={{ margin: '0 0 1.25rem', color: connected ? '#16a34a' : '#dc2626', fontSize: '0.85em' }}>
+        {connected === null ? 'Checking backend…' : connected ? 'Backend connected' : 'Backend unreachable'}
+      </p>
 
-      {/* Figure-type selector */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-        <button style={figTabStyle(figureType === FIG_VOLCANO)} onClick={() => setFigureType(FIG_VOLCANO)}>
-          Volcano
-        </button>
-        <button style={figTabStyle(figureType === FIG_HEATMAP)} onClick={() => setFigureType(FIG_HEATMAP)}>
-          Heatmap
-        </button>
-        <button style={figTabStyle(figureType === FIG_PCA)} onClick={() => setFigureType(FIG_PCA)}>
-          PCA
-        </button>
-        <button style={figTabStyle(figureType === FIG_CATEGORY)} onClick={() => setFigureType(FIG_CATEGORY)}>
-          Gene Category Plots
-        </button>
-        <button style={figTabStyle(figureType === FIG_PATHWAY)} onClick={() => setFigureType(FIG_PATHWAY)}>
-          Pathway Barplot
-        </button>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        {caps.tabs.heatmap && (
+          <button style={tabBtnStyle('heatmap')} onClick={() => setActiveTab('heatmap')}>Heatmap</button>
+        )}
+        {caps.tabs.pca && (
+          <button style={tabBtnStyle('pca')} onClick={() => setActiveTab('pca')}>PCA</button>
+        )}
+        {caps.tabs.volcano && (
+          <button style={tabBtnStyle('volcano')} onClick={() => setActiveTab('volcano')}>Volcano</button>
+        )}
+        {(caps.has_fpkm || caps.has_de) && (
+          <button style={tabBtnStyle('category')} onClick={() => setActiveTab('category')}>Gene Category Plots</button>
+        )}
+        {caps.tabs.pathway_barplot && (
+          <button style={tabBtnStyle('pathway')} onClick={() => setActiveTab('pathway')}>Pathway Barplot</button>
+        )}
       </div>
 
-      {/* ── Volcano section ─────────────────────────────────────────────── */}
-      {figureType === FIG_VOLCANO && (
-        <div>
-          <UploadPanel
-            onUpload={handleVolcanoUpload}
-            disabled={volcanoUploading || !connected}
-            label="Upload DE results table (.csv)"
-          />
-          {volcanoUploading && <p style={{ color: '#555' }}>Uploading and parsing…</p>}
-          {volcanoError && (
-            <p style={{ color: '#cc2222' }}><strong>Error:</strong> {volcanoError}</p>
-          )}
-
-          {rows && (
-            <div>
-              <div style={{ display: 'flex', gap: 0, marginTop: '1.5rem', borderBottom: '1px solid #ccc' }}>
-                <button style={tabStyle(volcanoTab === TAB_PLOTLY)} onClick={() => setVolcanoTab(TAB_PLOTLY)}>
-                  Plotly preview
-                </button>
-                <button style={tabStyle(volcanoTab === TAB_R)} onClick={() => setVolcanoTab(TAB_R)}>
-                  Plot generator (R)
-                </button>
-              </div>
-
-              <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1rem', background: '#fff' }}>
-                {volcanoTab === TAB_PLOTLY && (
-                  <VolcanoPlot
-                    rows={rows}
-                    padjCutoff={padjCutoff}
-                    lfcCutoff={lfcCutoff}
-                    onPadjChange={setPadjCutoff}
-                    onLfcChange={setLfcCutoff}
-                  />
-                )}
-                {volcanoTab === TAB_R && (
-                  <RVolcanoPanel
-                    datasetId={datasetId}
-                    padjCutoff={padjCutoff}
-                    lfcCutoff={lfcCutoff}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Tab content — conditional rendering intentionally remounts on tab switch
+          so each tab fetches fresh data (required for cross-tab metadata sync) */}
+      {activeTab === 'heatmap' && caps.tabs.heatmap && (
+        <HeatmapSection projectId={project.project_id} projectName={project.name} />
       )}
-
-      {/* ── Heatmap section ─────────────────────────────────────────────── */}
-      {figureType === FIG_HEATMAP && (
-        <div>
-          <UploadPanel
-            onUpload={handleHeatmapUpload}
-            disabled={heatmapUploading || !connected}
-            label="Upload FPKM matrix (.csv) — genes × samples"
-          />
-          {heatmapUploading && <p style={{ color: '#555' }}>Uploading and parsing…</p>}
-          {heatmapError && (
-            <p style={{ color: '#cc2222' }}><strong>Error:</strong> {heatmapError}</p>
-          )}
-
-          {heatmapId && (
-            <div style={{ marginTop: '1.5rem' }}>
-              <HeatmapSection heatmapId={heatmapId} initialSamples={heatmapSamples} />
-            </div>
-          )}
-        </div>
+      {activeTab === 'pca' && caps.tabs.pca && (
+        <PCASection projectId={project.project_id} projectName={project.name} />
       )}
-
-      {/* ── Gene Category Plots section ─────────────────────────────────── */}
-      {figureType === FIG_CATEGORY && (
-        <div>
-          <GeneCategoryPlotsSection />
-        </div>
+      {activeTab === 'volcano' && caps.tabs.volcano && (
+        <VolcanoSection connected={connected} />
       )}
-
-      {/* ── Pathway Barplot section ─────────────────────────────────────── */}
-      {figureType === FIG_PATHWAY && (
-        <div>
-          <PathwayBarplotSection />
-        </div>
+      {activeTab === 'category' && (
+        <GeneCategoryPlotsSection />
       )}
-
-      {/* ── PCA section ─────────────────────────────────────────────────── */}
-      {figureType === FIG_PCA && (
-        <div>
-          {!heatmapId && (
-            <>
-              <UploadPanel
-                onUpload={handleHeatmapUpload}
-                disabled={heatmapUploading || !connected}
-                label="Upload FPKM matrix (.csv) — genes × samples"
-              />
-              {heatmapUploading && <p style={{ color: '#555' }}>Uploading and parsing…</p>}
-              {heatmapError && (
-                <p style={{ color: '#cc2222' }}><strong>Error:</strong> {heatmapError}</p>
-              )}
-            </>
-          )}
-
-          {heatmapId && (
-            <div style={{ marginTop: '1rem' }}>
-              <PCASection datasetId={heatmapId} />
-            </div>
-          )}
-        </div>
+      {activeTab === 'pathway' && caps.tabs.pathway_barplot && (
+        <PathwayBarplotSection />
       )}
     </div>
   )

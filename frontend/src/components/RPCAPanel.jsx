@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { renderRPca } from '../api/client'
+import { renderProjectRPca } from '../api/client'
 
-export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
+export default function RPCAPanel({ projectId, hasCorrected, nGenes, defaultTitle }) {
   const [pcPair, setPcPair] = useState('PC1_PC2')
   const [useCorrected, setUseCorrected] = useState(false)
-  const [plotTitle, setPlotTitle] = useState('')
+  const [plotTitle, setPlotTitle] = useState(defaultTitle || '')
   const [rendering, setRendering] = useState(false)
   const [imgUrl, setImgUrl] = useState(null)
   const [error, setError] = useState(null)
@@ -15,12 +15,12 @@ export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
     try {
       const pcX = 'PC1'
       const pcY = pcPair === 'PC1_PC2' ? 'PC2' : 'PC3'
-      const url = await renderRPca(datasetId, {
+      const url = await renderProjectRPca(projectId, {
         pcX,
         pcY,
         useCorrected: useCorrected && hasCorrected,
         nGenes,
-        plotTitle: plotTitle.trim() || null,
+        plotTitle: plotTitle.trim() || defaultTitle || null,
       })
       setImgUrl(url)
     } catch (e) {
@@ -37,7 +37,6 @@ export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
         available in a future update.
       </p>
 
-      {/* Parameter panel */}
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
@@ -73,12 +72,12 @@ export default function RPCAPanel({ datasetId, hasCorrected, nGenes }) {
         )}
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.9em', flexGrow: 1, minWidth: 180 }}>
-          Plot title <span style={{ fontWeight: 400, color: '#6b7280' }}>(optional)</span>
+          Plot title <span style={{ fontWeight: 400, color: '#6b7280' }}>(defaults to project name)</span>
           <input
             type="text"
             value={plotTitle}
             onChange={e => setPlotTitle(e.target.value)}
-            placeholder="Leave blank for auto title"
+            placeholder={defaultTitle || 'Leave blank for auto title'}
             style={{ fontSize: '0.9em', padding: '0.2rem 0.4rem', border: '1px solid #d1d5db', borderRadius: 3 }}
           />
         </label>

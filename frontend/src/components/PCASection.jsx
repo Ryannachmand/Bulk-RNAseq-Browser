@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSamples, getPcaData } from '../api/client'
+import { getProjectSamples, getProjectPca, saveProjectMetadata } from '../api/client'
 import SampleMetaPanel from './SampleMetaPanel'
 import PCAPlot from './PCAPlot'
 import RPCAPanel from './RPCAPanel'
@@ -7,7 +7,7 @@ import RPCAPanel from './RPCAPanel'
 const TAB_INTERACTIVE = 'interactive'
 const TAB_R = 'r'
 
-export default function PCASection({ datasetId }) {
+export default function PCASection({ projectId, projectName }) {
   const [tab, setTab] = useState(TAB_INTERACTIVE)
   const [nGenes, setNGenes] = useState(500)
 
@@ -21,7 +21,7 @@ export default function PCASection({ datasetId }) {
   async function fetchSamples() {
     setSamplesError(null)
     try {
-      const data = await getSamples(datasetId)
+      const data = await getProjectSamples(projectId)
       setSamplesData(data)
     } catch (e) {
       setSamplesError(e.message)
@@ -32,7 +32,7 @@ export default function PCASection({ datasetId }) {
     setPcaLoading(true)
     setPcaError(null)
     try {
-      const data = await getPcaData(datasetId, { nGenes })
+      const data = await getProjectPca(projectId, { nGenes })
       setPcaData(data)
     } catch (e) {
       setPcaError(e.message)
@@ -44,7 +44,7 @@ export default function PCASection({ datasetId }) {
   useEffect(() => {
     fetchSamples()
     fetchPca()
-  }, [datasetId])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId])  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleMetadataSaved() {
     await fetchSamples()
@@ -65,7 +65,6 @@ export default function PCASection({ datasetId }) {
 
   return (
     <div>
-      {/* Sample metadata panel */}
       {samplesError && (
         <p style={{ color: '#dc2626', fontSize: '0.9em' }}>
           <strong>Error loading samples:</strong> {samplesError}
@@ -74,13 +73,12 @@ export default function PCASection({ datasetId }) {
 
       {samplesData && (
         <SampleMetaPanel
-          datasetId={datasetId}
           samplesData={samplesData}
+          onSave={(edits) => saveProjectMetadata(projectId, edits)}
           onSaved={handleMetadataSaved}
         />
       )}
 
-      {/* N genes control */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9em' }}>
           Top N genes (by variance):
@@ -117,7 +115,6 @@ export default function PCASection({ datasetId }) {
         </p>
       )}
 
-      {/* Tabs */}
       {pcaData && (
         <>
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
@@ -138,9 +135,10 @@ export default function PCASection({ datasetId }) {
 
             {tab === TAB_R && (
               <RPCAPanel
-                datasetId={datasetId}
+                projectId={projectId}
                 hasCorrected={!!pcaData.corrected}
                 nGenes={nGenes}
+                defaultTitle={projectName}
               />
             )}
           </div>

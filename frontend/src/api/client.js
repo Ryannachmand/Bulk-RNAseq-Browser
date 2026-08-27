@@ -1,5 +1,96 @@
 const BASE = `http://${window.location.hostname}:8000`
 
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+export async function createProject(name, files) {
+  const form = new FormData()
+  form.append('name', name)
+  if (files.fpkm) form.append('fpkm_file', files.fpkm)
+  if (files.de) form.append('de_file', files.de)
+  if (files.pathway) form.append('pathway_file', files.pathway)
+  const res = await fetch(`${BASE}/projects`, { method: 'POST', body: form })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Failed to create project')
+  return data
+}
+
+export async function getProject(projectId) {
+  const res = await fetch(`${BASE}/projects/${projectId}`)
+  if (!res.ok) throw new Error('Project not found')
+  return res.json()
+}
+
+export async function getProjectSamples(projectId) {
+  const res = await fetch(`${BASE}/projects/${projectId}/samples`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to load samples')
+  }
+  return res.json()
+}
+
+export async function saveProjectMetadata(projectId, metadata) {
+  const res = await fetch(`${BASE}/projects/${projectId}/metadata`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ metadata }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to save metadata')
+  }
+  return res.json()
+}
+
+export async function getProjectHeatmapData(projectId, { nGenes = 40, geneList = null, clusterRows = false } = {}) {
+  const params = new URLSearchParams({ n_genes: nGenes, cluster_rows: clusterRows })
+  if (geneList && geneList.length > 0) params.append('gene_list', geneList.join(','))
+  const res = await fetch(`${BASE}/projects/${projectId}/heatmap-data?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to load heatmap data')
+  }
+  return res.json()
+}
+
+export async function renderProjectRHeatmap(projectId, { genes, clusterRows, plotTitle }) {
+  const res = await fetch(`${BASE}/projects/${projectId}/render-r-heatmap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ genes, cluster_rows: clusterRows, plot_title: plotTitle || null }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R heatmap render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
+export async function getProjectPca(projectId, { nGenes = 500 } = {}) {
+  const params = new URLSearchParams({ n_genes: nGenes })
+  const res = await fetch(`${BASE}/projects/${projectId}/pca?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to compute PCA')
+  }
+  return res.json()
+}
+
+export async function renderProjectRPca(projectId, { pcX = 'PC1', pcY = 'PC2', useCorrected = false, nGenes = 500, plotTitle = null }) {
+  const res = await fetch(`${BASE}/projects/${projectId}/render-r-pca`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pc_x: pcX, pc_y: pcY, use_corrected: useCorrected, n_genes: nGenes, plot_title: plotTitle || null }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R PCA render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
 export async function checkHealth() {
   const res = await fetch(`${BASE}/health`)
   if (!res.ok) throw new Error('unreachable')

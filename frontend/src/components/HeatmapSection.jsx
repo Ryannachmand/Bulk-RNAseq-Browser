@@ -1,20 +1,18 @@
 import { useState, useEffect } from 'react'
-import { getHeatmapData } from '../api/client'
+import { getProjectHeatmapData } from '../api/client'
 import HeatmapPlot from './HeatmapPlot'
 import RHeatmapPanel from './RHeatmapPanel'
 
 const TAB_INTERACTIVE = 'interactive'
 const TAB_R = 'r'
 
-export default function HeatmapSection({ heatmapId, initialSamples }) {
+export default function HeatmapSection({ projectId, projectName }) {
   const [tab, setTab] = useState(TAB_INTERACTIVE)
 
-  // Controls (lifted so both tabs see the same values)
   const [nGenes, setNGenes] = useState(40)
   const [customGenesText, setCustomGenesText] = useState('')
   const [clusterRows, setClusterRows] = useState(false)
 
-  // Loaded heatmap data (shared between both tabs)
   const [heatmapData, setHeatmapData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -27,7 +25,7 @@ export default function HeatmapSection({ heatmapId, initialSamples }) {
         .split(/[\n,]+/)
         .map(s => s.trim())
         .filter(Boolean)
-      const data = await getHeatmapData(heatmapId, {
+      const data = await getProjectHeatmapData(projectId, {
         nGenes,
         geneList: geneList.length > 0 ? geneList : null,
         clusterRows,
@@ -40,7 +38,6 @@ export default function HeatmapSection({ heatmapId, initialSamples }) {
     }
   }
 
-  // Auto-fetch on mount
   useEffect(() => { fetchHeatmap() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabStyle = (active) => ({
@@ -57,7 +54,6 @@ export default function HeatmapSection({ heatmapId, initialSamples }) {
 
   return (
     <div>
-      {/* Controls */}
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
@@ -123,9 +119,9 @@ export default function HeatmapSection({ heatmapId, initialSamples }) {
           {loading ? 'Loading…' : 'Update'}
         </button>
 
-        {initialSamples && (
+        {heatmapData && (
           <span style={{ fontSize: '0.8em', color: '#777', alignSelf: 'flex-end' }}>
-            {initialSamples.length} samples
+            {heatmapData.samples.length} samples
           </span>
         )}
       </div>
@@ -136,7 +132,6 @@ export default function HeatmapSection({ heatmapId, initialSamples }) {
         </p>
       )}
 
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
         <button style={tabStyle(tab === TAB_INTERACTIVE)} onClick={() => setTab(TAB_INTERACTIVE)}>
           Interactive (Plotly)
@@ -160,9 +155,10 @@ export default function HeatmapSection({ heatmapId, initialSamples }) {
 
         {tab === TAB_R && (
           <RHeatmapPanel
-            heatmapId={heatmapId}
+            projectId={projectId}
             genes={heatmapData?.genes ?? null}
             clusterRows={clusterRows}
+            defaultTitle={projectName}
           />
         )}
       </div>

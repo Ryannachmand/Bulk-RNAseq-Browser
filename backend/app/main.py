@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import datasets
 from app.routers import categories
+from app.routers import projects
 
 app = FastAPI(title="Bulk RNA-seq Browser")
 
@@ -14,6 +15,7 @@ app.add_middleware(
 
 app.include_router(datasets.router)
 app.include_router(categories.router)
+app.include_router(projects.router)
 
 
 @app.get("/health")

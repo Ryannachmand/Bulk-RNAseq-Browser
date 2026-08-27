@@ -218,7 +218,7 @@ def _remove_batch_effect(X: np.ndarray, samples: list[str], sample_meta: dict) -
     return X - batch_contrib
 
 
-def _compute_pca(dataset_id: str, n_genes: int = 500) -> dict | None:
+def _compute_pca(dataset_id: str, n_genes: int = 500, override_metadata: dict | None = None) -> dict | None:
     """Shared PCA computation used by both JSON and R-render endpoints."""
     from sklearn.decomposition import PCA
 
@@ -227,7 +227,13 @@ def _compute_pca(dataset_id: str, n_genes: int = 500) -> dict | None:
         return None
 
     samples = list(df.columns)
-    saved_meta = _load_metadata(dataset_id)
+
+    if override_metadata is not None:
+        saved_meta = override_metadata if override_metadata else None
+        meta_inferred = not bool(saved_meta)
+    else:
+        saved_meta = _load_metadata(dataset_id)
+        meta_inferred = saved_meta is None
 
     if saved_meta:
         sample_meta = {
@@ -237,7 +243,6 @@ def _compute_pca(dataset_id: str, n_genes: int = 500) -> dict | None:
             }
             for s in samples
         }
-        meta_inferred = False
     else:
         inferred = _infer_conditions(samples)
         sample_meta = {s: {"condition": inferred[s], "batch": ""} for s in samples}
@@ -384,28 +389,26 @@ async def upload_fpkm(file: UploadFile = File(...)):
     }
 
 
-@router.get("/{dataset_id}/heatmap-data")
-def get_heatmap_data(
+def _compute_heatmap_data(
     dataset_id: str,
-    n_genes: int = Query(default=40, ge=1, le=500),
-    gene_list: Optional[str] = Query(default=None, description="Comma-separated gene names"),
-    cluster_rows: bool = Query(default=False),
-):
+    n_genes: int = 40,
+    gene_list: list[str] | None = None,
+    cluster_rows: bool = False,
+    override_metadata: dict | None = None,
+) -> dict:
+    """Core heatmap computation; raises ValueError/FileNotFoundError instead of HTTPException."""
     df = load_fpkm_matrix(dataset_id)
     if df is None:
-        raise HTTPException(status_code=404, detail="FPKM matrix not found for this ID")
+        raise FileNotFoundError("FPKM matrix not found")
 
     samples = list(df.columns)
 
-    # Gene selection
     if gene_list:
-        requested = [g.strip() for g in gene_list.split(",") if g.strip()]
-        selected_genes = [g for g in requested if g in df.index]
+        selected_genes = [g for g in gene_list if g in df.index]
         if not selected_genes:
-            raise HTTPException(
-                status_code=422,
-                detail=f"None of the requested genes were found in the FPKM matrix. "
-                       f"Tried: {requested[:10]}",
+            raise ValueError(
+                f"None of the requested genes were found in the FPKM matrix. "
+                f"Tried: {gene_list[:10]}"
             )
     else:
         variances = df.var(axis=1, ddof=1)
@@ -413,7 +416,6 @@ def get_heatmap_data(
 
     mat = df.loc[selected_genes].values.astype(float)
 
-    # Optional hierarchical clustering of rows
     if cluster_rows and len(selected_genes) > 1:
         try:
             from scipy.cluster.hierarchy import dendrogram, linkage
@@ -423,17 +425,17 @@ def get_heatmap_data(
             selected_genes = [selected_genes[i] for i in order]
             mat = mat[order, :]
         except ImportError:
-            raise HTTPException(
-                status_code=500,
-                detail="scipy is required for row clustering; install it in the backend environment.",
-            )
+            raise ValueError("scipy is required for row clustering")
 
     zmat = _compute_z_scores(mat)
 
-    # Grouping: saved metadata takes priority over name-inference
-    saved_meta = _load_metadata(dataset_id)
-    if saved_meta:
-        grouping = _grouping_from_metadata(samples, saved_meta)
+    if override_metadata is not None:
+        meta = override_metadata if override_metadata else None
+    else:
+        meta = _load_metadata(dataset_id)
+
+    if meta:
+        grouping = _grouping_from_metadata(samples, meta)
     else:
         grouping = _infer_groups(samples)
 
@@ -446,9 +448,27 @@ def get_heatmap_data(
     }
 
 
+@router.get("/{dataset_id}/heatmap-data")
+def get_heatmap_data(
+    dataset_id: str,
+    n_genes: int = Query(default=40, ge=1, le=500),
+    gene_list: Optional[str] = Query(default=None, description="Comma-separated gene names"),
+    cluster_rows: bool = Query(default=False),
+):
+    parsed_genes = [g.strip() for g in gene_list.split(",") if g.strip()] if gene_list else None
+    try:
+        return _compute_heatmap_data(dataset_id, n_genes, parsed_genes, cluster_rows)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="FPKM matrix not found for this ID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 class RHeatmapParams(BaseModel):
     genes: List[str]
     cluster_rows: bool = False
+    plot_title: Optional[str] = None
+    metadata: Optional[dict] = None
 
 
 @router.post("/{dataset_id}/render-r-heatmap")
@@ -461,8 +481,14 @@ def render_r_heatmap(dataset_id: str, params: RHeatmapParams):
     params_path = os.path.join(d, "r_heatmap_params.json")
     out_prefix = os.path.join(d, "r_heatmap")
 
+    params_data = params.model_dump()
+    if params_data.get("metadata") is None:
+        saved_meta = _load_metadata(dataset_id)
+        if saved_meta:
+            params_data["metadata"] = saved_meta
+
     with open(params_path, "w") as f:
-        json.dump(params.model_dump(), f)
+        json.dump(params_data, f)
 
     try:
         cmd = _find_rscript() + [

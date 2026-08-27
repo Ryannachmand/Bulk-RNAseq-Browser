@@ -17,6 +17,10 @@ out_prefix  <- args[3]
 params       <- fromJSON(params_path)
 GENES        <- params$genes
 CLUSTER_ROWS <- isTRUE(params$cluster_rows)
+PLOT_TITLE   <- if (!is.null(params$plot_title) && nchar(trimws(params$plot_title)) > 0) trimws(params$plot_title) else ""
+
+# Metadata: named list of {condition, batch} per sample, or NULL
+META <- params$metadata
 
 # Read FPKM matrix (genes × samples); first column is gene row-names
 fpkm <- read.csv(fpkm_path, row.names = 1, check.names = FALSE)
@@ -50,22 +54,40 @@ label_mat <- matrix(
   dimnames = dimnames(mat)
 )
 
-# ── COLUMN GROUPING (strip trailing _N replicate suffix) ─────────────────────
+# ── COLUMN GROUPING ────────────────────────────────────────────────────────────
 sample_names <- colnames(mat)
-group_names  <- sub("_\\d+$", "", sample_names)
-n_groups     <- length(unique(group_names))
-n_samples    <- length(sample_names)
 
-grouping_detected <- (n_groups < n_samples) &&
-                     (n_groups >= 2) &&
-                     any(table(group_names) > 1)
+if (!is.null(META) && length(META) > 0) {
+  # Use project metadata for grouping
+  group_names <- sapply(sample_names, function(s) {
+    entry <- META[[s]]
+    if (!is.null(entry)) {
+      cond <- entry$condition
+      if (!is.null(cond) && nchar(trimws(cond)) > 0) trimws(cond) else s
+    } else {
+      s
+    }
+  })
+  n_groups  <- length(unique(group_names))
+  n_samples <- length(sample_names)
+  grouping_detected <- n_groups >= 2 && n_groups < n_samples
+} else {
+  # Fall back to name inference (strip trailing _N replicate suffix)
+  group_names  <- sub("_\\d+$", "", sample_names)
+  n_groups     <- length(unique(group_names))
+  n_samples    <- length(sample_names)
+  grouping_detected <- (n_groups < n_samples) &&
+                       (n_groups >= 2) &&
+                       any(table(group_names) > 1)
+}
 
 ann_df     <- NULL
 ann_colors <- NULL
 gaps_col   <- NULL
 
 if (grouping_detected) {
-  ordered_groups <- unique(group_names)  # preserves column order
+  # Preserve condition order as encountered across sample list
+  ordered_groups <- unique(group_names)
 
   ann_df <- data.frame(
     Condition = factor(group_names, levels = ordered_groups),
@@ -106,6 +128,7 @@ for (out_path in c(png_path, pdf_path)) {
 
   h <- pheatmap(
     zmat,
+    main              = PLOT_TITLE,
     color             = palette,
     display_numbers   = label_mat,
     fontsize_number   = 11,

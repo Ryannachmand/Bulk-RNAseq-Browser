@@ -7,6 +7,8 @@ STORAGE_ROOT = os.environ.get(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data"),
 )
 
+PROJECT_STORAGE_ROOT = os.path.join(STORAGE_ROOT, "projects")
+
 
 def _dataset_dir(dataset_id: str) -> str:
     return os.path.join(STORAGE_ROOT, dataset_id)
@@ -48,6 +50,25 @@ def save_pathway_results(dataset_id: str, df: pd.DataFrame, meta: dict) -> None:
     df.to_csv(os.path.join(path, "pathway_results.csv"), index=False)
     with open(os.path.join(path, "pathway_meta.json"), "w") as f:
         json.dump(meta, f)
+
+
+def project_dir(project_id: str) -> str:
+    return os.path.join(PROJECT_STORAGE_ROOT, project_id)
+
+
+def save_project(project_id: str, data: dict) -> None:
+    path = project_dir(project_id)
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, "project.json"), "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def load_project(project_id: str) -> dict | None:
+    path = os.path.join(project_dir(project_id), "project.json")
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
 
 
 def load_pathway_results(dataset_id: str) -> tuple[pd.DataFrame | None, dict | None]:
