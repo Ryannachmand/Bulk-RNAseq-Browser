@@ -6,8 +6,9 @@ import CategoryVolcanoSection from './CategoryVolcanoSection'
 const SUBTAB_HEATMAP  = 'heatmap'
 const SUBTAB_VOLCANO  = 'volcano'
 
-export default function GeneCategoryPlotsSection() {
-  const [subtab, setSubtab] = useState(SUBTAB_HEATMAP)
+export default function GeneCategoryPlotsSection({ projectId, hasFpkm, hasDe }) {
+  const defaultSubtab = hasFpkm ? SUBTAB_HEATMAP : SUBTAB_VOLCANO
+  const [subtab, setSubtab] = useState(defaultSubtab)
   const [editorOpen, setEditorOpen] = useState(true)
 
   const subtabStyle = (active) => ({
@@ -46,19 +47,23 @@ export default function GeneCategoryPlotsSection() {
         )}
       </div>
 
-      {/* Subtabs */}
+      {/* Subtabs — only show tabs that have data */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
-        <button style={subtabStyle(subtab === SUBTAB_HEATMAP)} onClick={() => setSubtab(SUBTAB_HEATMAP)}>
-          Categorized Heatmap
-        </button>
-        <button style={subtabStyle(subtab === SUBTAB_VOLCANO)} onClick={() => setSubtab(SUBTAB_VOLCANO)}>
-          Categorized Volcano
-        </button>
+        {hasFpkm && (
+          <button style={subtabStyle(subtab === SUBTAB_HEATMAP)} onClick={() => setSubtab(SUBTAB_HEATMAP)}>
+            Categorized Heatmap
+          </button>
+        )}
+        {hasDe && (
+          <button style={subtabStyle(subtab === SUBTAB_VOLCANO)} onClick={() => setSubtab(SUBTAB_VOLCANO)}>
+            Categorized Volcano
+          </button>
+        )}
       </div>
 
       <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1.2rem', background: '#fff' }}>
-        {subtab === SUBTAB_HEATMAP  && <CategoryHeatmapSection />}
-        {subtab === SUBTAB_VOLCANO  && <CategoryVolcanoSection />}
+        {subtab === SUBTAB_HEATMAP && hasFpkm && <CategoryHeatmapSection projectId={projectId} />}
+        {subtab === SUBTAB_VOLCANO && hasDe && <CategoryVolcanoSection projectId={projectId} />}
       </div>
     </div>
   )

@@ -1,38 +1,33 @@
-import { useState } from 'react'
-import { getDeResults, uploadDataset } from '../api/client'
-import UploadPanel from './UploadPanel'
+import { useEffect, useState } from 'react'
+import { getProjectVolcanoData } from '../api/client'
 import VolcanoPlot from './VolcanoPlot'
 import RVolcanoPanel from './RVolcanoPanel'
 
 const TAB_PLOTLY = 'plotly'
 const TAB_R = 'r'
 
-export default function VolcanoSection({ connected }) {
-  const [uploading, setUploading] = useState(false)
+export default function VolcanoSection({ projectId, projectName }) {
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [rows, setRows] = useState(null)
-  const [datasetId, setDatasetId] = useState(null)
   const [tab, setTab] = useState(TAB_PLOTLY)
   const [padjCutoff, setPadjCutoff] = useState(0.05)
   const [lfcCutoff, setLfcCutoff] = useState(1)
 
-  async function handleUpload(file) {
+  useEffect(() => {
+    setLoading(true)
     setError(null)
     setRows(null)
-    setDatasetId(null)
-    setUploading(true)
-    try {
-      const { dataset_id } = await uploadDataset(file)
-      const data = await getDeResults(dataset_id)
-      setDatasetId(dataset_id)
-      setRows(data)
-      setTab(TAB_PLOTLY)
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setUploading(false)
-    }
-  }
+    getProjectVolcanoData(projectId)
+      .then(data => {
+        setRows(data)
+        setLoading(false)
+      })
+      .catch(e => {
+        setError(e.message)
+        setLoading(false)
+      })
+  }, [projectId])
 
   const tabStyle = (active) => ({
     padding: '0.35rem 1rem',
@@ -46,49 +41,40 @@ export default function VolcanoSection({ connected }) {
     position: 'relative',
   })
 
+  if (loading) return <p style={{ color: '#555' }}>Loading DE data…</p>
+  if (error) return <p style={{ color: '#cc2222' }}><strong>Error:</strong> {error}</p>
+  if (!rows) return null
+
   return (
     <div>
-      <UploadPanel
-        onUpload={handleUpload}
-        disabled={uploading || !connected}
-        label="Upload DE results table (.csv)"
-      />
-      {uploading && <p style={{ color: '#555' }}>Uploading and parsing…</p>}
-      {error && (
-        <p style={{ color: '#cc2222' }}><strong>Error:</strong> {error}</p>
-      )}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
+        <button style={tabStyle(tab === TAB_PLOTLY)} onClick={() => setTab(TAB_PLOTLY)}>
+          Plotly preview
+        </button>
+        <button style={tabStyle(tab === TAB_R)} onClick={() => setTab(TAB_R)}>
+          Plot generator (R)
+        </button>
+      </div>
 
-      {rows && (
-        <div>
-          <div style={{ display: 'flex', gap: 0, marginTop: '1.5rem', borderBottom: '1px solid #ccc' }}>
-            <button style={tabStyle(tab === TAB_PLOTLY)} onClick={() => setTab(TAB_PLOTLY)}>
-              Plotly preview
-            </button>
-            <button style={tabStyle(tab === TAB_R)} onClick={() => setTab(TAB_R)}>
-              Plot generator (R)
-            </button>
-          </div>
-
-          <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1rem', background: '#fff' }}>
-            {tab === TAB_PLOTLY && (
-              <VolcanoPlot
-                rows={rows}
-                padjCutoff={padjCutoff}
-                lfcCutoff={lfcCutoff}
-                onPadjChange={setPadjCutoff}
-                onLfcChange={setLfcCutoff}
-              />
-            )}
-            {tab === TAB_R && (
-              <RVolcanoPanel
-                datasetId={datasetId}
-                padjCutoff={padjCutoff}
-                lfcCutoff={lfcCutoff}
-              />
-            )}
-          </div>
-        </div>
-      )}
+      <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1rem', background: '#fff' }}>
+        {tab === TAB_PLOTLY && (
+          <VolcanoPlot
+            rows={rows}
+            padjCutoff={padjCutoff}
+            lfcCutoff={lfcCutoff}
+            onPadjChange={setPadjCutoff}
+            onLfcChange={setLfcCutoff}
+          />
+        )}
+        {tab === TAB_R && (
+          <RVolcanoPanel
+            projectId={projectId}
+            defaultTitle={projectName}
+            padjCutoff={padjCutoff}
+            lfcCutoff={lfcCutoff}
+          />
+        )}
+      </div>
     </div>
   )
 }

@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Plot from 'react-plotly.js'
-import { listDeDatasets, getCategorizedVolcano, renderRCategoryVolcanos } from '../api/client'
+import { getProjectCategoryVolcano, renderProjectRCategoryVolcanos } from '../api/client'
 
-const UP_COLOR   = '#B22222'  // firebrick4
-const DOWN_COLOR = '#4878CF'  // steelblue2
-const NS_COLOR   = '#9ca3af'  // grey for category NS genes
+const UP_COLOR   = '#B22222'
+const DOWN_COLOR = '#4878CF'
+const NS_COLOR   = '#9ca3af'
 
 const TAB_PLOTLY = 'plotly'
 const TAB_R      = 'r'
 
-// Single mini volcano panel for one gene category
 function CategoryVolcanoPanel({ cat, allGenes, padjCutoff, lfcCutoff }) {
   const catSet = useMemo(() => new Set(cat.genes), [cat.genes])
   const nCatGenes = cat.genes.length
@@ -18,7 +17,6 @@ function CategoryVolcanoPanel({ cat, allGenes, padjCutoff, lfcCutoff }) {
     const bgX = [], bgY = []
     const catX = [], catY = [], catColors = [], catTexts = [], catLabels = []
 
-    // Sort category genes by significance for labeling
     const catRows = allGenes.filter(r => catSet.has(r.symbol) && r.log2FoldChange != null && r.padj != null)
     const upSig   = catRows.filter(r => r.padj < padjCutoff && r.log2FoldChange >  lfcCutoff).sort((a, b) => a.padj - b.padj)
     const downSig = catRows.filter(r => r.padj < padjCutoff && r.log2FoldChange < -lfcCutoff).sort((a, b) => a.padj - b.padj)
@@ -70,14 +68,12 @@ function CategoryVolcanoPanel({ cat, allGenes, padjCutoff, lfcCutoff }) {
       <div style={{ overflowX: 'auto' }}>
         <Plot
           data={[
-            // Background (non-category genes)
             {
               x: bgX, y: bgY, mode: 'markers', type: 'scattergl',
               marker: { color: '#e5e7eb', size: 3, opacity: 0.35 },
               hoverinfo: 'skip',
               showlegend: false,
             },
-            // Category genes
             {
               x: catX, y: catY, mode: 'markers+text', type: 'scatter',
               marker: { color: catColors, size: 7, opacity: 0.85 },
@@ -107,39 +103,25 @@ function CategoryVolcanoPanel({ cat, allGenes, padjCutoff, lfcCutoff }) {
   )
 }
 
-export default function CategoryVolcanoSection() {
-  const [datasets, setDatasets]     = useState(null)
-  const [datasetId, setDatasetId]   = useState('')
+export default function CategoryVolcanoSection({ projectId }) {
   const [padjCutoff, setPadjCutoff] = useState(0.05)
   const [lfcCutoff, setLfcCutoff]   = useState(1.0)
   const [subtab, setSubtab]         = useState(TAB_PLOTLY)
 
-  // Interactive state
   const [loading, setLoading]       = useState(false)
   const [volcData, setVolcData]     = useState(null)
   const [dataError, setDataError]   = useState(null)
 
-  // R-exact state
   const [rLoading, setRLoading]     = useState(false)
   const [rImageUrl, setRImageUrl]   = useState(null)
   const [rError, setRError]         = useState(null)
 
-  useEffect(() => {
-    listDeDatasets()
-      .then(d => {
-        setDatasets(d.datasets)
-        if (d.datasets.length > 0) setDatasetId(d.datasets[0].id)
-      })
-      .catch(() => setDatasets([]))
-  }, [])
-
   async function loadVolcano() {
-    if (!datasetId) return
     setLoading(true)
     setDataError(null)
     setVolcData(null)
     try {
-      const data = await getCategorizedVolcano(datasetId)
+      const data = await getProjectCategoryVolcano(projectId)
       setVolcData(data)
     } catch (e) {
       setDataError(e.message)
@@ -149,12 +131,11 @@ export default function CategoryVolcanoSection() {
   }
 
   async function generateRPlot() {
-    if (!datasetId) return
     setRLoading(true)
     setRError(null)
     setRImageUrl(null)
     try {
-      const url = await renderRCategoryVolcanos(datasetId, { padjCutoff, lfcCutoff, nLabel: 15 })
+      const url = await renderProjectRCategoryVolcanos(projectId, { padjCutoff, lfcCutoff, nLabel: 15 })
       setRImageUrl(url)
     } catch (e) {
       setRError(e.message)
@@ -177,23 +158,7 @@ export default function CategoryVolcanoSection() {
 
   return (
     <div>
-      {/* Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <label style={{ fontSize: '0.9em', fontWeight: 500 }}>
-          DE dataset:&nbsp;
-          <select
-            value={datasetId}
-            onChange={e => { setDatasetId(e.target.value); setVolcData(null); setRImageUrl(null) }}
-            style={{ padding: '3px 6px', fontSize: '0.9em', border: '1px solid #ccc', borderRadius: 3 }}
-          >
-            {!datasets && <option>Loading…</option>}
-            {datasets && datasets.length === 0 && <option value="">No DE datasets uploaded yet</option>}
-            {datasets && datasets.map(d => (
-              <option key={d.id} value={d.id}>{d.id.slice(0, 8)}…</option>
-            ))}
-          </select>
-        </label>
-
         <label style={{ fontSize: '0.9em' }}>
           padj cutoff:&nbsp;
           <input type="number" min={0} max={1} step={0.01} value={padjCutoff}
@@ -210,7 +175,7 @@ export default function CategoryVolcanoSection() {
 
         <button
           onClick={loadVolcano}
-          disabled={!datasetId || loading}
+          disabled={loading}
           style={{ padding: '4px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.88em' }}
         >
           {loading ? 'Loading…' : 'Load volcanos'}
@@ -219,7 +184,6 @@ export default function CategoryVolcanoSection() {
 
       {dataError && <p style={{ color: '#dc2626' }}><strong>Error:</strong> {dataError}</p>}
 
-      {/* Subtabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
         <button style={tabStyle(subtab === TAB_PLOTLY)} onClick={() => setSubtab(TAB_PLOTLY)}>Interactive</button>
         <button style={tabStyle(subtab === TAB_R)} onClick={() => setSubtab(TAB_R)}>R-exact plot</button>
@@ -230,7 +194,7 @@ export default function CategoryVolcanoSection() {
           <div>
             {!volcData && !loading && (
               <p style={{ color: '#6b7280', margin: 0 }}>
-                Select a DE dataset and click "Load volcanos" to render one panel per active category.
+                Click "Load volcanos" to render one panel per active category.
               </p>
             )}
             {loading && <p style={{ color: '#555' }}>Loading…</p>}
@@ -265,7 +229,7 @@ export default function CategoryVolcanoSection() {
             </p>
             <button
               onClick={generateRPlot}
-              disabled={!datasetId || rLoading}
+              disabled={rLoading}
               style={{ padding: '5px 16px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.9em' }}
             >
               {rLoading ? 'Generating…' : 'Generate R plot'}

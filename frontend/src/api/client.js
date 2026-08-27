@@ -91,6 +91,100 @@ export async function renderProjectRPca(projectId, { pcX = 'PC1', pcY = 'PC2', u
   return URL.createObjectURL(blob)
 }
 
+export async function getProjectVolcanoData(projectId) {
+  const res = await fetch(`${BASE}/projects/${projectId}/volcano-data`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to load volcano data')
+  }
+  return res.json()
+}
+
+export async function renderProjectRVolcano(projectId, params) {
+  const res = await fetch(`${BASE}/projects/${projectId}/render-r-volcano`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R volcano render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
+export async function getProjectCategoryHeatmap(projectId, nTopGenes = 40) {
+  const params = new URLSearchParams({ n_top_genes: nTopGenes })
+  const res = await fetch(`${BASE}/projects/${projectId}/category-heatmap?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to compute category heatmap')
+  }
+  return res.json()
+}
+
+export async function renderProjectRCategoryHeatmaps(projectId, nTopGenes = 40) {
+  const res = await fetch(`${BASE}/projects/${projectId}/render-r-category-heatmaps`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ n_top_genes: nTopGenes }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R category heatmap render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
+export async function getProjectCategoryVolcano(projectId) {
+  const res = await fetch(`${BASE}/projects/${projectId}/category-volcano`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to load category volcano data')
+  }
+  return res.json()
+}
+
+export async function renderProjectRCategoryVolcanos(projectId, { padjCutoff = 0.05, lfcCutoff = 1.0, nLabel = 15 } = {}) {
+  const res = await fetch(`${BASE}/projects/${projectId}/render-r-category-volcanos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ padj_cutoff: padjCutoff, lfc_cutoff: lfcCutoff, n_label: nLabel }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R category volcano render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
+export async function getProjectPathwayResults(projectId, topN = 20) {
+  const params = new URLSearchParams({ top_n: topN })
+  const res = await fetch(`${BASE}/projects/${projectId}/pathway-data?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Failed to load pathway results')
+  }
+  return res.json()
+}
+
+export async function renderProjectRPathwayBarplot(projectId, { topN = 20, plotTitle = 'Pathway Enrichment' } = {}) {
+  const res = await fetch(`${BASE}/projects/${projectId}/render-r-pathway-barplot`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ top_n: topN, plot_title: plotTitle }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'R pathway barplot render failed')
+  }
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
 export async function checkHealth() {
   const res = await fetch(`${BASE}/health`)
   if (!res.ok) throw new Error('unreachable')

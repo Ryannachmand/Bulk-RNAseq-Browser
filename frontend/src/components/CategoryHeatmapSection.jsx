@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import HeatmapPlot from './HeatmapPlot'
-import { getCategorizedHeatmap, renderRCategoryHeatmaps, listFpkmDatasets } from '../api/client'
+import { getProjectCategoryHeatmap, renderProjectRCategoryHeatmaps } from '../api/client'
 
 const TAB_PLOTLY = 'plotly'
 const TAB_R      = 'r'
 
-// Mini heatmap panel — wraps HeatmapPlot with a title and feeds the shared
-// samples/grouping into the per-category data shape HeatmapPlot expects.
 function CategoryPanel({ cat, samples, grouping }) {
   if (!cat.genes || cat.genes.length === 0) {
     return (
@@ -34,7 +32,6 @@ function CategoryPanel({ cat, samples, grouping }) {
           {cat.genes.length} genes
         </span>
       </div>
-      {/* overflow-x: auto lets the fixed-width Plotly chart scroll rather than clip */}
       <div style={{ overflowX: 'auto' }}>
         <HeatmapPlot data={data} />
       </div>
@@ -42,38 +39,24 @@ function CategoryPanel({ cat, samples, grouping }) {
   )
 }
 
-export default function CategoryHeatmapSection() {
-  const [datasets, setDatasets]     = useState(null)
-  const [datasetId, setDatasetId]   = useState('')
+export default function CategoryHeatmapSection({ projectId }) {
   const [nTopGenes, setNTopGenes]   = useState(40)
   const [subtab, setSubtab]         = useState(TAB_PLOTLY)
 
-  // Interactive state
   const [loading, setLoading]       = useState(false)
   const [heatmapData, setHeatmapData] = useState(null)
   const [dataError, setDataError]   = useState(null)
 
-  // R-exact state
   const [rLoading, setRLoading]     = useState(false)
   const [rImageUrl, setRImageUrl]   = useState(null)
   const [rError, setRError]         = useState(null)
 
-  useEffect(() => {
-    listFpkmDatasets()
-      .then(d => {
-        setDatasets(d.datasets)
-        if (d.datasets.length > 0) setDatasetId(d.datasets[0].id)
-      })
-      .catch(() => setDatasets([]))
-  }, [])
-
   async function loadHeatmap() {
-    if (!datasetId) return
     setLoading(true)
     setDataError(null)
     setHeatmapData(null)
     try {
-      const data = await getCategorizedHeatmap(datasetId, nTopGenes)
+      const data = await getProjectCategoryHeatmap(projectId, nTopGenes)
       setHeatmapData(data)
     } catch (e) {
       setDataError(e.message)
@@ -83,12 +66,11 @@ export default function CategoryHeatmapSection() {
   }
 
   async function generateRPlot() {
-    if (!datasetId) return
     setRLoading(true)
     setRError(null)
     setRImageUrl(null)
     try {
-      const url = await renderRCategoryHeatmaps(datasetId, nTopGenes)
+      const url = await renderProjectRCategoryHeatmaps(projectId, nTopGenes)
       setRImageUrl(url)
     } catch (e) {
       setRError(e.message)
@@ -111,23 +93,7 @@ export default function CategoryHeatmapSection() {
 
   return (
     <div>
-      {/* Dataset selector + controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <label style={{ fontSize: '0.9em', fontWeight: 500 }}>
-          Dataset:&nbsp;
-          <select
-            value={datasetId}
-            onChange={e => { setDatasetId(e.target.value); setHeatmapData(null); setRImageUrl(null) }}
-            style={{ padding: '3px 6px', fontSize: '0.9em', border: '1px solid #ccc', borderRadius: 3 }}
-          >
-            {!datasets && <option>Loading…</option>}
-            {datasets && datasets.length === 0 && <option value="">No FPKM datasets uploaded yet</option>}
-            {datasets && datasets.map(d => (
-              <option key={d.id} value={d.id}>{d.id.slice(0, 8)}…</option>
-            ))}
-          </select>
-        </label>
-
         <label style={{ fontSize: '0.9em' }}>
           Top genes per category:&nbsp;
           <input
@@ -139,7 +105,7 @@ export default function CategoryHeatmapSection() {
 
         <button
           onClick={loadHeatmap}
-          disabled={!datasetId || loading}
+          disabled={loading}
           style={{ padding: '4px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.88em' }}
         >
           {loading ? 'Loading…' : 'Load heatmap'}
@@ -148,7 +114,6 @@ export default function CategoryHeatmapSection() {
 
       {dataError && <p style={{ color: '#dc2626' }}><strong>Error:</strong> {dataError}</p>}
 
-      {/* Subtabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc', marginBottom: 0 }}>
         <button style={tabStyle(subtab === TAB_PLOTLY)} onClick={() => setSubtab(TAB_PLOTLY)}>
           Interactive
@@ -159,12 +124,11 @@ export default function CategoryHeatmapSection() {
       </div>
 
       <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1rem', background: '#fff' }}>
-        {/* ── Interactive subtab ── */}
         {subtab === TAB_PLOTLY && (
           <div>
             {!heatmapData && !loading && (
               <p style={{ color: '#6b7280', margin: 0 }}>
-                Select a dataset and click "Load heatmap" to render panels for all active categories.
+                Click "Load heatmap" to render panels for all active categories.
               </p>
             )}
             {loading && <p style={{ color: '#555' }}>Computing z-scores…</p>}
@@ -175,18 +139,9 @@ export default function CategoryHeatmapSection() {
                   <p style={{ color: '#6b7280', fontSize: '0.82em', margin: '0 0 12px' }}>
                     {active.length} active categor{active.length === 1 ? 'y' : 'ies'} · {heatmapData.samples.length} samples
                   </p>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: 16,
-                  }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                     {heatmapData.categories.map((cat, i) => (
-                      <CategoryPanel
-                        key={i}
-                        cat={cat}
-                        samples={heatmapData.samples}
-                        grouping={heatmapData.grouping}
-                      />
+                      <CategoryPanel key={i} cat={cat} samples={heatmapData.samples} grouping={heatmapData.grouping} />
                     ))}
                   </div>
                 </div>
@@ -195,7 +150,6 @@ export default function CategoryHeatmapSection() {
           </div>
         )}
 
-        {/* ── R-exact subtab ── */}
         {subtab === TAB_R && (
           <div>
             <p style={{ margin: '0 0 10px', color: '#374151', fontSize: '0.9em' }}>
@@ -204,7 +158,7 @@ export default function CategoryHeatmapSection() {
             </p>
             <button
               onClick={generateRPlot}
-              disabled={!datasetId || rLoading}
+              disabled={rLoading}
               style={{ padding: '5px 16px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.9em' }}
             >
               {rLoading ? 'Generating…' : 'Generate R plot'}

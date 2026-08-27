@@ -14,6 +14,7 @@ function firstAvailableTab(caps) {
   if (caps.tabs.heatmap) return 'heatmap'
   if (caps.tabs.pca) return 'pca'
   if (caps.tabs.volcano) return 'volcano'
+  if (caps.tabs.gene_category_plots) return 'category'
   if (caps.tabs.pathway_barplot) return 'pathway'
   return 'heatmap'
 }
@@ -104,7 +105,7 @@ export default function App() {
         {caps.tabs.volcano && (
           <button style={tabBtnStyle('volcano')} onClick={() => setActiveTab('volcano')}>Volcano</button>
         )}
-        {(caps.has_fpkm || caps.has_de) && (
+        {caps.tabs.gene_category_plots && (
           <button style={tabBtnStyle('category')} onClick={() => setActiveTab('category')}>Gene Category Plots</button>
         )}
         {caps.tabs.pathway_barplot && (
@@ -121,13 +122,17 @@ export default function App() {
         <PCASection projectId={project.project_id} projectName={project.name} />
       )}
       {activeTab === 'volcano' && caps.tabs.volcano && (
-        <VolcanoSection connected={connected} />
+        <VolcanoSection projectId={project.project_id} projectName={project.name} />
       )}
-      {activeTab === 'category' && (
-        <GeneCategoryPlotsSection />
+      {activeTab === 'category' && caps.tabs.gene_category_plots && (
+        <GeneCategoryPlotsSection
+          projectId={project.project_id}
+          hasFpkm={caps.has_fpkm}
+          hasDe={caps.has_de}
+        />
       )}
       {activeTab === 'pathway' && caps.tabs.pathway_barplot && (
-        <PathwayBarplotSection />
+        <PathwayBarplotSection projectId={project.project_id} projectName={project.name} />
       )}
     </div>
   )

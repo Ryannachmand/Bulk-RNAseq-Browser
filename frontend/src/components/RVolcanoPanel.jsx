@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { renderRVolcano } from '../api/client'
+import { renderProjectRVolcano } from '../api/client'
 
-export default function RVolcanoPanel({ datasetId, padjCutoff, lfcCutoff }) {
+export default function RVolcanoPanel({ projectId, defaultTitle, padjCutoff, lfcCutoff }) {
   const [nLabel, setNLabel] = useState(5)
   const [customGenes, setCustomGenes] = useState('')
-  const [plotTitle, setPlotTitle] = useState('Volcano Plot')
+  const [plotTitle, setPlotTitle] = useState(defaultTitle || '')
   const [loading, setLoading] = useState(false)
   const [imgUrl, setImgUrl] = useState(null)
   const [error, setError] = useState(null)
@@ -18,7 +18,7 @@ export default function RVolcanoPanel({ datasetId, padjCutoff, lfcCutoff }) {
         .split(/[\n,]+/)
         .map(s => s.trim())
         .filter(Boolean)
-      const url = await renderRVolcano(datasetId, {
+      const url = await renderProjectRVolcano(projectId, {
         padj_cutoff: padjCutoff,
         lfc_cutoff: lfcCutoff,
         n_label: nLabel,
