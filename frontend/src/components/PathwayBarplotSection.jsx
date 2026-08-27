@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react'
 import Plot from 'react-plotly.js'
-import { getProjectPathwayResults, renderProjectRPathwayBarplot } from '../api/client'
+import { getProjectPathwayResults, renderProjectRPathwayBarplot, runPathwayAnalysis } from '../api/client'
 
 const TAB_PLOTLY = 'plotly'
 const TAB_R      = 'r'
 
-export default function PathwayBarplotSection({ projectId, projectName }) {
+export default function PathwayBarplotSection({ projectId, projectName, hasPathway, hasDe, deProvenance }) {
   const [directionAvailable, setDirAvail] = useState(false)
   const [tab, setTab]                     = useState(TAB_PLOTLY)
   const [topN, setTopN]                   = useState(20)
   const [plotTitle, setPlotTitle]         = useState(projectName || 'Pathway Enrichment')
 
-  const [loading, setLoading]             = useState(true)
+  const [loading, setLoading]             = useState(false)
   const [rows, setRows]                   = useState(null)
   const [loadError, setLoadError]         = useState(null)
 
@@ -19,7 +19,16 @@ export default function PathwayBarplotSection({ projectId, projectName }) {
   const [rError, setRError]               = useState(null)
   const [rImageUrl, setRImageUrl]         = useState(null)
 
+  // enrichGO run state
+  const [enrichPadjCutoff, setEnrichPadj] = useState(0.05)
+  const [enrichLfcCutoff, setEnrichLfc]   = useState(1.0)
+  const [enrichRunning, setEnrichRunning] = useState(false)
+  const [enrichError, setEnrichError]     = useState(null)
+  const [enrichDone, setEnrichDone]       = useState(false)
+
+  // Load pathway data if it already exists
   useEffect(() => {
+    if (!hasPathway) return
     setLoading(true)
     setLoadError(null)
     getProjectPathwayResults(projectId, topN)
@@ -32,7 +41,27 @@ export default function PathwayBarplotSection({ projectId, projectName }) {
         setLoadError(e.message)
         setLoading(false)
       })
-  }, [projectId, topN])
+  }, [projectId, topN, hasPathway])
+
+  async function handleRunEnrichGO() {
+    setEnrichRunning(true)
+    setEnrichError(null)
+    setEnrichDone(false)
+    try {
+      await runPathwayAnalysis(projectId, { padjCutoff: enrichPadjCutoff, lfcCutoff: enrichLfcCutoff })
+      setEnrichDone(true)
+      // Load the freshly computed pathway results
+      setLoading(true)
+      const { rows: r, direction_available } = await getProjectPathwayResults(projectId, topN)
+      setRows(r)
+      setDirAvail(direction_available)
+      setLoading(false)
+    } catch (e) {
+      setEnrichError(e.message)
+    } finally {
+      setEnrichRunning(false)
+    }
+  }
 
   async function handleRender() {
     setRLoading(true)
@@ -61,10 +90,101 @@ export default function PathwayBarplotSection({ projectId, projectName }) {
   })
 
   if (loading) return <p style={{ color: '#555' }}>Loading pathway data…</p>
-  if (loadError) return <p style={{ color: '#cc2222' }}><strong>Error:</strong> {loadError}</p>
+
+  const inputNum = (val, onChange, min, step) => ({
+    type: 'number', value: val, min, step,
+    onChange: e => onChange(Number(e.target.value)),
+    style: { width: 72, padding: '0.2rem 0.4rem', border: '1px solid #ccc', borderRadius: 3 },
+  })
 
   return (
     <div>
+      {/* Run Pathway Analysis panel — shown whenever DE exists (even if pathway data already exists) */}
+      {hasDe && (
+        <div style={{
+          marginBottom: '1.25rem',
+          padding: '1rem 1.25rem',
+          background: enrichDone ? '#f0fdf4' : '#f8fafc',
+          border: `1px solid ${enrichDone ? '#bbf7d0' : '#e2e8f0'}`,
+          borderRadius: 6,
+        }}>
+          <div style={{ fontWeight: 600, fontSize: '0.9em', color: '#111827', marginBottom: '0.5rem' }}>
+            Run Pathway Analysis (clusterProfiler enrichGO · BP)
+          </div>
+          {deProvenance && (
+            <div style={{ fontSize: '0.8em', color: '#6b7280', marginBottom: '0.6rem' }}>
+              DE source: <strong>{deProvenance}</strong>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85em' }}>
+              padj cutoff:
+              <input {...inputNum(enrichPadjCutoff, setEnrichPadj, 0.001, 0.001)} />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85em' }}>
+              |LFC| cutoff:
+              <input {...inputNum(enrichLfcCutoff, setEnrichLfc, 0, 0.1)} />
+            </label>
+            <button
+              onClick={handleRunEnrichGO}
+              disabled={enrichRunning}
+              style={{
+                padding: '0.4rem 1rem',
+                background: enrichRunning ? '#9ca3af' : '#7c3aed',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                fontSize: '0.85em',
+                fontWeight: 600,
+                cursor: enrichRunning ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {enrichRunning ? 'Running enrichGO…' : enrichDone ? 'Re-run Pathway Analysis' : 'Run Pathway Analysis'}
+            </button>
+          </div>
+          {enrichRunning && (
+            <p style={{ fontSize: '0.8em', color: '#6b7280', marginTop: '0.5rem' }}>
+              Running clusterProfiler enrichGO — this may take 30–90 seconds. Do not close this page.
+            </p>
+          )}
+          {enrichDone && (
+            <p style={{ fontSize: '0.82em', color: '#16a34a', marginTop: '0.5rem' }}>
+              ✓ Pathway analysis complete. Results shown below.
+            </p>
+          )}
+          {enrichError && (
+            <div style={{
+              marginTop: '0.6rem',
+              padding: '0.5rem 0.75rem',
+              background: '#fef2f2',
+              border: '1px solid #fca5a5',
+              borderRadius: 4,
+              color: '#dc2626',
+              fontSize: '0.8em',
+              fontFamily: 'monospace',
+              whiteSpace: 'pre-wrap',
+              maxHeight: 180,
+              overflowY: 'auto',
+            }}>
+              <strong style={{ fontFamily: 'system-ui' }}>Error:</strong>
+              {'\n'}{enrichError}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* No pathway data yet and DE exists — prompt to run */}
+      {!rows && !loadError && hasDe && !enrichDone && (
+        <p style={{ color: '#6b7280', fontSize: '0.9em' }}>
+          Click "Run Pathway Analysis" above to compute GO Biological Process enrichment from your DE results.
+        </p>
+      )}
+
+      {loadError && <p style={{ color: '#cc2222' }}><strong>Error loading pathway data:</strong> {loadError}</p>}
+
+      {/* Pathway plot — only shown when data is available */}
+      {rows && (
+      <>
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
         <button style={tabStyle(tab === TAB_PLOTLY)} onClick={() => setTab(TAB_PLOTLY)}>
@@ -157,6 +277,8 @@ export default function PathwayBarplotSection({ projectId, projectName }) {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   )
 }
