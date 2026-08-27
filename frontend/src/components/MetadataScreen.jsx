@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { getProjectSamples, saveProjectMetadata, runDeseq2 } from '../api/client'
+import { getProjectSamples, saveProjectMetadata, runDeseq2, runLimma } from '../api/client'
 import SampleMetaPanel from './SampleMetaPanel'
 
 export default function MetadataScreen({ project, onContinue }) {
@@ -14,7 +14,13 @@ export default function MetadataScreen({ project, onContinue }) {
   const [deseqError, setDeseqError] = useState(null)
   const [deseqDone, setDeseqDone] = useState(false)
 
+  const [limmaRunning, setLimmaRunning] = useState(false)
+  const [limmaError, setLimmaError] = useState(null)
+  const [limmaDone, setLimmaDone] = useState(false)
+
   const hasRawCounts = project.capabilities?.has_raw_counts
+  // limma section shown only when FPKM is available but raw counts are not
+  const hasFpkmOnly = project.capabilities?.has_fpkm && !hasRawCounts
 
   useEffect(() => {
     getProjectSamples(project.project_id)
@@ -56,8 +62,27 @@ export default function MetadataScreen({ project, onContinue }) {
     }
   }
 
+  async function handleRunLimma() {
+    if (!refLevel || !cmpLevel || refLevel === cmpLevel || !currentEdits) return
+    setLimmaRunning(true)
+    setLimmaError(null)
+    setLimmaDone(false)
+    try {
+      await saveProjectMetadata(project.project_id, currentEdits)
+      await runLimma(project.project_id, refLevel, cmpLevel)
+      setLimmaDone(true)
+    } catch (e) {
+      setLimmaError(e.message)
+    } finally {
+      setLimmaRunning(false)
+    }
+  }
+
   const canRunDeseq2 =
     !!refLevel && !!cmpLevel && refLevel !== cmpLevel && !deseqRunning && !!currentEdits
+
+  const canRunLimma =
+    !!refLevel && !!cmpLevel && refLevel !== cmpLevel && !limmaRunning && !!currentEdits
 
   const selectStyle = {
     padding: '0.3rem 0.5rem',
@@ -197,6 +222,98 @@ export default function MetadataScreen({ project, onContinue }) {
               }}>
                 <strong style={{ fontFamily: 'system-ui, sans-serif' }}>DESeq2 error:</strong>
                 {'\n'}{deseqError}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* limma DE section — only when FPKM is available and raw counts are NOT */}
+        {hasFpkmOnly && samplesData && (
+          <div style={{
+            marginTop: '1.5rem',
+            borderTop: '1px solid #e5e7eb',
+            paddingTop: '1.5rem',
+          }}>
+            <div style={{ fontSize: '0.9em', fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>
+              DE Analysis (limma on log2 FPKM)
+            </div>
+            <p style={{ margin: '0 0 0.75rem', fontSize: '0.82em', color: '#6b7280' }}>
+              No raw counts — limma will be used on log2(FPKM+1). This project will always use limma;
+              DESeq2 is not offered without raw counts.
+            </p>
+
+            {conditionLevels.length < 2 ? (
+              <p style={{ fontSize: '0.85em', color: '#6b7280' }}>
+                Enter at least 2 distinct condition labels above to configure the contrast.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.8em', fontWeight: 500, color: '#374151' }}>Reference level</span>
+                  <select value={refLevel} onChange={e => setRefLevel(e.target.value)} style={selectStyle}>
+                    <option value="">— choose —</option>
+                    {conditionLevels.map(l => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.8em', fontWeight: 500, color: '#374151' }}>Comparison level</span>
+                  <select value={cmpLevel} onChange={e => setCmpLevel(e.target.value)} style={selectStyle}>
+                    <option value="">— choose —</option>
+                    {conditionLevels
+                      .filter(l => l !== refLevel)
+                      .map(l => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                  </select>
+                </label>
+                <button
+                  onClick={handleRunLimma}
+                  disabled={!canRunLimma}
+                  style={{
+                    padding: '0.45rem 1.1rem',
+                    background: canRunLimma ? '#16a34a' : '#9ca3af',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 5,
+                    fontSize: '0.9em',
+                    fontWeight: 600,
+                    cursor: canRunLimma ? 'pointer' : 'default',
+                    alignSelf: 'flex-end',
+                  }}
+                >
+                  {limmaRunning ? 'Running limma…' : 'Run DE Analysis'}
+                </button>
+              </div>
+            )}
+
+            {limmaRunning && (
+              <p style={{ fontSize: '0.82em', color: '#6b7280', marginTop: '0.6rem' }}>
+                Running limma DE analysis — this may take a moment. Do not close this page.
+              </p>
+            )}
+            {limmaDone && (
+              <p style={{ fontSize: '0.85em', color: '#16a34a', marginTop: '0.5rem' }}>
+                ✓ DE analysis complete (limma). Volcano and Gene Category Plots are now available.
+              </p>
+            )}
+            {limmaError && (
+              <div style={{
+                marginTop: '0.75rem',
+                padding: '0.6rem 0.75rem',
+                background: '#fef2f2',
+                border: '1px solid #fca5a5',
+                borderRadius: 5,
+                color: '#dc2626',
+                fontSize: '0.8em',
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                maxHeight: 220,
+                overflowY: 'auto',
+              }}>
+                <strong style={{ fontFamily: 'system-ui, sans-serif' }}>limma error:</strong>
+                {'\n'}{limmaError}
               </div>
             )}
           </div>

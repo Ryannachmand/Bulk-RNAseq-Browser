@@ -81,7 +81,10 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
 
   const hasRawCounts = !!(rawCountsFile || starFolderPath.trim())
   const hasFile = !!(fpkmFile || deFile || pathwayFile || hasRawCounts)
-  const speciesOk = !hasRawCounts || species !== ''
+  // Species is required for raw counts (needed for GTF/FPKM computation) and
+  // for FPKM uploads (needed later for pathway enrichment analysis).
+  const needsSpecies = hasRawCounts || !!fpkmFile
+  const speciesOk = !needsSpecies || species !== ''
   const canSubmit = connected && name.trim().length > 0 && hasFile && speciesOk && !creating
 
   async function handleCreate() {
@@ -95,7 +98,7 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
         pathway: pathwayFile,
         rawCounts: rawCountsFile,
         starFolder: starFolderPath.trim() || null,
-        species: hasRawCounts ? species : null,
+        species: needsSpecies ? species : null,
       })
       onProjectCreated(proj)
     } catch (e) {
@@ -205,23 +208,23 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
               onChange={setStarFolderPath}
             />
 
-            {/* Species selector — required when raw counts or STAR folder is provided */}
+            {/* Species selector — required for raw counts; required for FPKM (enables pathway analysis) */}
             <div style={{
               padding: '0.65rem 1rem',
-              border: `1px solid ${hasRawCounts && !species ? '#fca5a5' : '#e5e7eb'}`,
+              border: `1px solid ${needsSpecies && !species ? '#fca5a5' : '#e5e7eb'}`,
               borderRadius: 6,
-              background: hasRawCounts ? '#fafafa' : '#f9fafb',
+              background: needsSpecies ? '#fafafa' : '#f9fafb',
             }}>
-              <label style={{ display: 'block', fontSize: '0.85em', fontWeight: 600, color: hasRawCounts ? '#374151' : '#9ca3af', marginBottom: 4 }}>
-                Species{hasRawCounts ? ' *' : ''}
+              <label style={{ display: 'block', fontSize: '0.85em', fontWeight: 600, color: needsSpecies ? '#374151' : '#9ca3af', marginBottom: 4 }}>
+                Species{needsSpecies ? ' *' : ''}
               </label>
               <select
                 value={species}
                 onChange={e => setSpecies(e.target.value)}
-                disabled={!hasRawCounts}
-                style={{ ...selectStyle, color: hasRawCounts ? '#374151' : '#9ca3af' }}
+                disabled={!needsSpecies}
+                style={{ ...selectStyle, color: needsSpecies ? '#374151' : '#9ca3af' }}
               >
-                <option value="">— required for raw counts —</option>
+                <option value="">— required for FPKM / raw counts —</option>
                 <option value="human">Human (GRCh38)</option>
                 <option value="mouse">Mouse (GRCm39)</option>
               </select>
@@ -266,9 +269,9 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
             Select at least one data file above.
           </p>
         )}
-        {hasRawCounts && !species && (
+        {needsSpecies && !species && (
           <p style={{ textAlign: 'center', margin: '0.5rem 0 0', fontSize: '0.8em', color: '#dc2626' }}>
-            Select a species for raw counts data.
+            Select a species for FPKM / raw counts data.
           </p>
         )}
       </div>

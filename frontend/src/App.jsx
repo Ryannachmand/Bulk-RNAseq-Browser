@@ -129,7 +129,11 @@ export default function App() {
         <PCASection projectId={project.project_id} projectName={project.name} />
       )}
       {activeTab === 'volcano' && caps.tabs.volcano && (
-        <VolcanoSection projectId={project.project_id} projectName={project.name} />
+        <VolcanoSection
+          projectId={project.project_id}
+          projectName={project.name}
+          deProvenance={caps.de_provenance}
+        />
       )}
       {activeTab === 'category' && caps.tabs.gene_category_plots && (
         <GeneCategoryPlotsSection
@@ -139,7 +143,13 @@ export default function App() {
         />
       )}
       {activeTab === 'pathway' && caps.tabs.pathway_barplot && (
-        <PathwayBarplotSection projectId={project.project_id} projectName={project.name} />
+        <PathwayBarplotSection
+          projectId={project.project_id}
+          projectName={project.name}
+          hasPathway={caps.has_pathway}
+          hasDe={caps.has_de}
+          deProvenance={caps.de_provenance}
+        />
       )}
     </div>
   )

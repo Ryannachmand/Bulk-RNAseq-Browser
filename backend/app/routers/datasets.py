@@ -74,6 +74,16 @@ R_COMPUTE_FPKM_SCRIPT = os.path.join(
     "..", "..", "r_scripts", "compute_fpkm.R",
 )
 
+R_LIMMA_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "r_scripts", "run_limma.R",
+)
+
+R_ENRICHGO_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "r_scripts", "run_enrichgo.R",
+)
+
 
 def _find_rscript() -> list[str]:
     """Return the command prefix to run Rscript in the r-env conda environment."""

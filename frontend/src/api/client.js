@@ -216,6 +216,32 @@ export async function runDeseq2(projectId, referenceLevel, comparisonLevel) {
   return res.json()
 }
 
+export async function runLimma(projectId, referenceLevel, comparisonLevel) {
+  const res = await fetch(`${BASE}/projects/${projectId}/run-limma`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reference_level: referenceLevel, comparison_level: comparisonLevel }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'limma DE analysis failed')
+  }
+  return res.json()
+}
+
+export async function runPathwayAnalysis(projectId, { padjCutoff = 0.05, lfcCutoff = 1.0 } = {}) {
+  const res = await fetch(`${BASE}/projects/${projectId}/run-pathway-analysis`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ padj_cutoff: padjCutoff, lfc_cutoff: lfcCutoff }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || 'Pathway analysis failed')
+  }
+  return res.json()
+}
+
 // ── DE table / volcano ────────────────────────────────────────────────────────
 
 export async function uploadDataset(file) {

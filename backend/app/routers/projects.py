@@ -42,7 +42,9 @@ from app.routers.datasets import (
     R_CATEGORY_HEATMAP_SCRIPT,
     R_CATEGORY_VOLCANO_SCRIPT,
     R_COMPUTE_FPKM_SCRIPT,
+    R_ENRICHGO_SCRIPT,
     R_HEATMAP_SCRIPT,
+    R_LIMMA_SCRIPT,
     R_PCA_SCRIPT,
     R_PATHWAY_BARPLOT_SCRIPT,
     R_VOLCANO_SCRIPT,
@@ -123,12 +125,14 @@ def _capabilities(project: dict) -> dict:
         "has_fpkm": has_fpkm,
         "has_pathway": has_pathway,
         "has_raw_counts": has_raw_counts,
+        "de_provenance": project.get("de_provenance"),
         "tabs": {
             "volcano": has_de,
             "heatmap": has_fpkm,
             "pca": has_fpkm,
             "gene_category_plots": has_de or has_fpkm,
-            "pathway_barplot": has_pathway,
+            # Unlocks when pathway data exists OR when DE is present and enrichGO can be run
+            "pathway_barplot": has_pathway or has_de,
         },
     }
 
@@ -170,6 +174,7 @@ async def create_project(
         fpkm_dataset_id = str(uuid.uuid4())
         save_fpkm_matrix(fpkm_dataset_id, df)
 
+    de_provenance = None
     if de_file:
         contents = await de_file.read()
         try:
@@ -178,6 +183,7 @@ async def create_project(
             raise HTTPException(status_code=422, detail=f"DE file: {e}")
         de_dataset_id = str(uuid.uuid4())
         save_dataset(de_dataset_id, df)
+        de_provenance = "uploaded"
 
     if pathway_file:
         contents = await pathway_file.read()
@@ -249,11 +255,15 @@ async def create_project(
         "name": name,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "de_dataset_id": de_dataset_id,
+        "de_provenance": de_provenance,
         "fpkm_dataset_id": fpkm_dataset_id,
         "fpkm_source": fpkm_source,
         "pathway_dataset_id": pathway_dataset_id,
         "raw_counts_dataset_id": raw_counts_dataset_id,
         "raw_counts_species": species if has_raw else None,
+        # species is stored for all project types (incl. FPKM-only) so
+        # pathway analysis (enrichGO) can be run without raw counts.
+        "species": species if species else None,
         "metadata": {},
     }
     save_project(project_id, project)
@@ -924,6 +934,181 @@ def run_project_deseq2(project_id: str, body: RunDeseq2Body):
     save_dataset(de_id, de_df)
 
     project["de_dataset_id"] = de_id
+    project["de_provenance"] = "DESeq2 (raw counts)"
     save_project(project_id, project)
 
     return {"de_dataset_id": de_id, "capabilities": _capabilities(project)}
+
+
+# ── limma DE endpoint (FPKM-only projects) ────────────────────────────────────
+
+class RunLimmaBody(BaseModel):
+    reference_level: str
+    comparison_level: str
+
+
+@router.post("/{project_id}/run-limma")
+def run_project_limma(project_id: str, body: RunLimmaBody):
+    project = load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # limma is only offered when raw counts are NOT available — raw-counts
+    # projects must use DESeq2, and the UI never shows this option for them.
+    if project.get("raw_counts_dataset_id"):
+        raise HTTPException(
+            status_code=422,
+            detail="This project has raw counts — use DESeq2 instead of limma.",
+        )
+
+    fpkm_id = project.get("fpkm_dataset_id")
+    if not fpkm_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Project has no FPKM dataset — cannot run limma.",
+        )
+
+    metadata = project.get("metadata") or {}
+    if not metadata:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Sample metadata not saved. Save metadata on Screen 2 before running DE analysis."
+            ),
+        )
+
+    d = dataset_dir(fpkm_id)
+    fpkm_csv_path = os.path.join(d, "fpkm_matrix.csv")
+    if not os.path.exists(fpkm_csv_path):
+        raise HTTPException(status_code=404, detail="FPKM matrix file not found")
+
+    output_csv_path = os.path.join(d, "limma_results.csv")
+    params = {
+        "fpkm_csv_path": fpkm_csv_path,
+        "metadata": metadata,
+        "reference_level": body.reference_level,
+        "comparison_level": body.comparison_level,
+        "output_csv_path": output_csv_path,
+    }
+    params_path = os.path.join(d, "limma_params.json")
+    with open(params_path, "w") as f:
+        json.dump(params, f, indent=2)
+
+    try:
+        cmd = _find_rscript() + [os.path.abspath(R_LIMMA_SCRIPT), params_path]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"limma failed:\n{result.stderr[-4000:]}",
+        )
+
+    if not os.path.exists(output_csv_path):
+        raise HTTPException(
+            status_code=500,
+            detail="limma script ran but produced no output file",
+        )
+
+    try:
+        de_df = pd.read_csv(output_csv_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not read limma output: {e}")
+
+    de_id = str(uuid.uuid4())
+    save_dataset(de_id, de_df)
+
+    project["de_dataset_id"] = de_id
+    project["de_provenance"] = "limma (FPKM-only)"
+    save_project(project_id, project)
+
+    return {"de_dataset_id": de_id, "capabilities": _capabilities(project)}
+
+
+# ── Universal pathway analysis endpoint ───────────────────────────────────────
+
+class RunPathwayAnalysisBody(BaseModel):
+    padj_cutoff: float = 0.05
+    lfc_cutoff: float = 1.0
+
+
+@router.post("/{project_id}/run-pathway-analysis")
+def run_project_pathway_analysis(project_id: str, body: RunPathwayAnalysisBody):
+    project = load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    de_id = project.get("de_dataset_id")
+    if not de_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Project has no DE dataset — run DESeq2 or limma DE analysis first.",
+        )
+
+    species = project.get("species") or project.get("raw_counts_species")
+    if not species:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Species not set for this project. Recreate the project and select "
+                "a species (Human / Mouse) to enable pathway enrichment analysis."
+            ),
+        )
+
+    d = dataset_dir(de_id)
+    de_csv_path = os.path.join(d, "de_results.csv")
+    if not os.path.exists(de_csv_path):
+        raise HTTPException(status_code=404, detail="DE results file not found")
+
+    pw_id = str(uuid.uuid4())
+    pw_d = dataset_dir(pw_id)
+    os.makedirs(pw_d, exist_ok=True)
+    output_csv_path = os.path.join(pw_d, "pathway_results.csv")
+
+    params = {
+        "de_csv_path": de_csv_path,
+        "species": species,
+        "padj_cutoff": body.padj_cutoff,
+        "lfc_cutoff": body.lfc_cutoff,
+        "output_csv_path": output_csv_path,
+    }
+    params_path = os.path.join(pw_d, "enrichgo_params.json")
+    with open(params_path, "w") as f:
+        json.dump(params, f, indent=2)
+
+    try:
+        cmd = _find_rscript() + [os.path.abspath(R_ENRICHGO_SCRIPT), params_path]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pathway analysis failed:\n{result.stderr[-4000:]}",
+        )
+
+    if not os.path.exists(output_csv_path):
+        raise HTTPException(
+            status_code=500,
+            detail="Pathway analysis script ran but produced no output file",
+        )
+
+    try:
+        pw_df = pd.read_csv(output_csv_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not read pathway output: {e}")
+
+    meta = {"direction_available": True}
+    save_pathway_results(pw_id, pw_df, meta)
+
+    project["pathway_dataset_id"] = pw_id
+    save_project(project_id, project)
+
+    return {
+        "pathway_dataset_id": pw_id,
+        "n_pathways": len(pw_df),
+        "capabilities": _capabilities(project),
+    }
