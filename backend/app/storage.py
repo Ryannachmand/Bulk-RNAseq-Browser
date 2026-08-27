@@ -52,6 +52,19 @@ def save_pathway_results(dataset_id: str, df: pd.DataFrame, meta: dict) -> None:
         json.dump(meta, f)
 
 
+def save_gene_lengths(dataset_id: str, lengths: pd.Series) -> None:
+    path = _dataset_dir(dataset_id)
+    os.makedirs(path, exist_ok=True)
+    lengths.to_frame("length").to_csv(os.path.join(path, "gene_lengths.csv"))
+
+
+def load_gene_lengths(dataset_id: str) -> pd.Series | None:
+    path = os.path.join(_dataset_dir(dataset_id), "gene_lengths.csv")
+    if not os.path.exists(path):
+        return None
+    return pd.read_csv(path, index_col=0).squeeze("columns")
+
+
 def save_raw_counts(dataset_id: str, df: pd.DataFrame) -> None:
     path = _dataset_dir(dataset_id)
     os.makedirs(path, exist_ok=True)

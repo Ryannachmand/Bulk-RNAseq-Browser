@@ -24,6 +24,7 @@ from app.storage import (
     load_raw_counts,
     save_dataset,
     save_fpkm_matrix,
+    save_gene_lengths,
     save_pathway_results,
     save_project,
     save_raw_counts,
@@ -31,6 +32,7 @@ from app.storage import (
 from app.routers.datasets import (
     _compute_heatmap_data,
     _compute_pca,
+    _compute_vst_pca,
     _compute_z_scores,
     _find_rscript,
     _grouping_from_metadata,
@@ -39,6 +41,7 @@ from app.routers.datasets import (
     _load_categories,
     R_CATEGORY_HEATMAP_SCRIPT,
     R_CATEGORY_VOLCANO_SCRIPT,
+    R_COMPUTE_FPKM_SCRIPT,
     R_HEATMAP_SCRIPT,
     R_PCA_SCRIPT,
     R_PATHWAY_BARPLOT_SCRIPT,
@@ -62,6 +65,52 @@ GTF_PATHS = {
 R_DESEQ2_SCRIPT = os.path.join(
     os.path.dirname(__file__), "..", "..", "r_scripts", "run_deseq2.R"
 )
+
+
+def _run_compute_fpkm(
+    raw_counts_dataset_id: str,
+    species: str,
+    fpkm_dataset_id: str,
+) -> None:
+    """Run compute_fpkm.R and write output directly into fpkm_dataset_id's directory.
+
+    Creates the FPKM dataset directory and fpkm_matrix.csv. Raises HTTPException on failure.
+    """
+    raw_d = dataset_dir(raw_counts_dataset_id)
+    counts_path = os.path.join(raw_d, "raw_counts.csv")
+    gene_lengths_path = os.path.join(raw_d, "gene_lengths.csv")
+    gtf_path = GTF_PATHS[species]
+
+    fpkm_d = dataset_dir(fpkm_dataset_id)
+    os.makedirs(fpkm_d, exist_ok=True)
+    output_fpkm_path = os.path.join(fpkm_d, "fpkm_matrix.csv")
+
+    params = {
+        "counts_csv_path": counts_path,
+        "gene_lengths_csv_path": gene_lengths_path if os.path.exists(gene_lengths_path) else None,
+        "gtf_path": gtf_path,
+        "output_fpkm_path": output_fpkm_path,
+    }
+    params_path = os.path.join(raw_d, "fpkm_compute_params.json")
+    with open(params_path, "w") as f:
+        json.dump(params, f, indent=2)
+
+    try:
+        cmd = _find_rscript() + [os.path.abspath(R_COMPUTE_FPKM_SCRIPT), params_path]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"FPKM computation failed:\n{result.stderr[-2000:]}",
+        )
+
+    if not os.path.exists(output_fpkm_path):
+        raise HTTPException(
+            status_code=500, detail="FPKM compute script ran but produced no output"
+        )
 
 
 def _capabilities(project: dict) -> dict:
@@ -139,16 +188,20 @@ async def create_project(
         pathway_dataset_id = str(uuid.uuid4())
         save_pathway_results(pathway_dataset_id, df, meta)
 
+    counts_df = None
+    gene_lengths = None
     if raw_counts_file:
         contents = await raw_counts_file.read()
         try:
-            counts_df = parse_raw_counts_matrix(
+            counts_df, gene_lengths = parse_raw_counts_matrix(
                 contents, filename=raw_counts_file.filename or ""
             )
         except RawCountsParseError as e:
             raise HTTPException(status_code=422, detail=f"Raw counts file: {e}")
         raw_counts_dataset_id = str(uuid.uuid4())
         save_raw_counts(raw_counts_dataset_id, counts_df)
+        if gene_lengths is not None:
+            save_gene_lengths(raw_counts_dataset_id, gene_lengths)
     elif star_folder_path and star_folder_path.strip():
         try:
             counts_df = parse_star_folder(star_folder_path.strip())
@@ -157,12 +210,47 @@ async def create_project(
         raw_counts_dataset_id = str(uuid.uuid4())
         save_raw_counts(raw_counts_dataset_id, counts_df)
 
+    # Validate sample alignment when user uploads both FPKM and raw counts
+    if fpkm_dataset_id and raw_counts_dataset_id and counts_df is not None:
+        uploaded_fpkm = load_fpkm_matrix(fpkm_dataset_id)
+        if uploaded_fpkm is not None:
+            fpkm_samples = set(uploaded_fpkm.columns)
+            counts_samples = set(counts_df.columns)
+            missing_in_counts = fpkm_samples - counts_samples
+            missing_in_fpkm = counts_samples - fpkm_samples
+            if missing_in_counts or missing_in_fpkm:
+                msg_parts = []
+                if missing_in_counts:
+                    msg_parts.append(
+                        f"FPKM samples not in raw counts: {sorted(missing_in_counts)}"
+                    )
+                if missing_in_fpkm:
+                    msg_parts.append(
+                        f"raw counts samples not in FPKM: {sorted(missing_in_fpkm)}"
+                    )
+                raise HTTPException(
+                    status_code=422,
+                    detail="Sample name mismatch between uploaded FPKM and raw counts. "
+                    + "; ".join(msg_parts),
+                )
+
+    # Auto-compute FPKM from raw counts when no FPKM was uploaded
+    fpkm_source = None
+    if fpkm_dataset_id:
+        fpkm_source = "uploaded"
+    elif raw_counts_dataset_id and species:
+        computed_fpkm_id = str(uuid.uuid4())
+        _run_compute_fpkm(raw_counts_dataset_id, species, computed_fpkm_id)
+        fpkm_dataset_id = computed_fpkm_id
+        fpkm_source = "computed"
+
     project = {
         "project_id": project_id,
         "name": name,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "de_dataset_id": de_dataset_id,
         "fpkm_dataset_id": fpkm_dataset_id,
+        "fpkm_source": fpkm_source,
         "pathway_dataset_id": pathway_dataset_id,
         "raw_counts_dataset_id": raw_counts_dataset_id,
         "raw_counts_species": species if has_raw else None,
@@ -331,11 +419,23 @@ def get_project_pca(project_id: str, n_genes: int = Query(default=500, ge=1, le=
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    fpkm_id = project.get("fpkm_dataset_id")
-    if not fpkm_id:
-        raise HTTPException(status_code=422, detail="Project has no FPKM dataset")
-
     meta = project.get("metadata") or None
+    raw_counts_id = project.get("raw_counts_dataset_id")
+    fpkm_id = project.get("fpkm_dataset_id")
+
+    # VST PCA when raw counts + saved metadata are available
+    if raw_counts_id and meta:
+        try:
+            result = _compute_vst_pca(raw_counts_id, meta, n_genes)
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        if result is None:
+            raise HTTPException(status_code=404, detail="Raw counts not found")
+        return result
+
+    # Fallback: log2(FPKM+1) PCA
+    if not fpkm_id:
+        raise HTTPException(status_code=422, detail="Project has no FPKM or raw counts dataset")
     result = _compute_pca(fpkm_id, n_genes, override_metadata=meta)
     if result is None:
         raise HTTPException(status_code=404, detail="FPKM matrix not found")
@@ -348,20 +448,28 @@ def render_project_r_pca(project_id: str, params: RPcaParams):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    fpkm_id = project.get("fpkm_dataset_id")
-    if not fpkm_id:
-        raise HTTPException(status_code=422, detail="Project has no FPKM dataset")
-
-    d = dataset_dir(fpkm_id)
-    if not os.path.exists(d):
-        raise HTTPException(status_code=404, detail="Dataset directory not found")
-
     meta = project.get("metadata") or None
-    pca_data = _compute_pca(fpkm_id, params.n_genes, override_metadata=meta)
-    if pca_data is None:
-        raise HTTPException(status_code=404, detail="FPKM matrix not found")
+    raw_counts_id = project.get("raw_counts_dataset_id")
+    fpkm_id = project.get("fpkm_dataset_id")
 
     plot_title = params.plot_title or project.get("name", "")
+
+    # VST PCA when raw counts + saved metadata are available
+    if raw_counts_id and meta:
+        try:
+            pca_data = _compute_vst_pca(raw_counts_id, meta, params.n_genes)
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        if pca_data is None:
+            raise HTTPException(status_code=404, detail="Raw counts not found")
+        d = dataset_dir(raw_counts_id)
+    elif fpkm_id:
+        pca_data = _compute_pca(fpkm_id, params.n_genes, override_metadata=meta)
+        if pca_data is None:
+            raise HTTPException(status_code=404, detail="FPKM matrix not found")
+        d = dataset_dir(fpkm_id)
+    else:
+        raise HTTPException(status_code=422, detail="Project has no FPKM or raw counts dataset")
 
     coords_path = os.path.join(d, "r_pca_coords.json")
     with open(coords_path, "w") as f:

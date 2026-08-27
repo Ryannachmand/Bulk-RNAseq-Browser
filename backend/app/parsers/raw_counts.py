@@ -6,11 +6,16 @@ class RawCountsParseError(Exception):
     pass
 
 
-def parse_raw_counts_matrix(contents: bytes, filename: str = "") -> pd.DataFrame:
+def parse_raw_counts_matrix(
+    contents: bytes, filename: str = ""
+) -> tuple[pd.DataFrame, pd.Series | None]:
     """Parse a gene × sample raw counts matrix (CSV or TSV).
 
-    First column must be Ensembl gene IDs. A 'Length' column is silently ignored.
-    Returns a DataFrame with gene_id as index and samples as columns.
+    First column must be Ensembl gene IDs. If a 'Length' column is present it
+    is extracted and returned as a Series (index=gene_ids, name='length') for
+    FPKM computation; it is not included in the counts DataFrame.
+
+    Returns (counts_df, gene_lengths_or_None).
     """
     sep = "\t" if (filename.endswith(".tsv") or b"\t" in contents[:2000]) else ","
     try:
@@ -21,8 +26,12 @@ def parse_raw_counts_matrix(contents: bytes, filename: str = "") -> pd.DataFrame
     if df.empty:
         raise RawCountsParseError("File is empty or has no data rows")
 
-    # Drop Length column if present (used for FPKM; not needed for DE)
+    gene_lengths: pd.Series | None = None
     if "Length" in df.columns:
+        try:
+            gene_lengths = pd.to_numeric(df["Length"], errors="raise").rename("length")
+        except Exception:
+            gene_lengths = None
         df = df.drop(columns=["Length"])
 
     if df.shape[1] < 2:
@@ -38,4 +47,4 @@ def parse_raw_counts_matrix(contents: bytes, filename: str = "") -> pd.DataFrame
     if (df < 0).any().any():
         raise RawCountsParseError("Negative values found in counts matrix")
 
-    return df
+    return df, gene_lengths
