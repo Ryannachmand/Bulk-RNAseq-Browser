@@ -48,8 +48,9 @@ df$Count <- as.integer(df$Count)
 # ── Select top N pathways and build plot data ────────────────────────────────
 
 if (direction_available && "direction" %in% colnames(df)) {
-  up   <- df[df$direction == "Upregulated",   ]
-  down <- df[df$direction == "Downregulated",  ]
+  # Accept both capitalized ("Upregulated") and lowercase ("up") direction values
+  up   <- df[tolower(df$direction) %in% c("up", "upregulated"),   ]
+  down <- df[tolower(df$direction) %in% c("down", "downregulated"), ]
 
   # top_n per direction (Yang uses top 12 per direction; we use ceiling(top_n/2))
   n_per_dir <- ceiling(top_n / 2)
@@ -63,6 +64,10 @@ if (direction_available && "direction" %in% colnames(df)) {
   up$neg_log10_padj_plot   <-  up$neg_log10_padj
   down$neg_log10_padj_plot <- -down$neg_log10_padj
 
+  # Normalize to canonical labels for fill legend
+  up$direction   <- "Upregulated"
+  down$direction <- "Downregulated"
+
   plot_data <- rbind(up, down)
   plot_data <- plot_data[order(plot_data$neg_log10_padj_plot), ]
   plot_data$Description_short <- factor(
@@ -74,12 +79,13 @@ if (direction_available && "direction" %in% colnames(df)) {
   max_val <- max(abs(plot_data$neg_log10_padj_plot), na.rm = TRUE) * 1.15
 
   # Label hjust: outside bar end
+  is_up <- tolower(plot_data$direction) %in% c("up", "upregulated")
   plot_data$label_x <- ifelse(
-    plot_data$direction == "Upregulated",
+    is_up,
     plot_data$neg_log10_padj_plot + max_val * 0.03,
     plot_data$neg_log10_padj_plot - max_val * 0.03
   )
-  plot_data$label_hjust <- ifelse(plot_data$direction == "Upregulated", 0, 1)
+  plot_data$label_hjust <- ifelse(is_up, 0, 1)
 
   # Colors matching Yang Pathways.R lines 667-668
   fill_colors <- c("Upregulated" = "#E41A1C", "Downregulated" = "#FB9A99")
