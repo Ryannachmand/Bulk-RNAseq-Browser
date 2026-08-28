@@ -1,0 +1,23 @@
+PASS  0.1 three pathways with distinct gene sets are available — 3 found among 40 bars
+      · A="extracellular matrix organization" (45 genes) · B="ossification" (42 genes) · C="chemotaxis" (42 genes)
+      · MY LIST genes (in no pathway above): ALDH1A1, LRRC4B, MYL9, GABBR2
+PASS  1.1 TOP N = 3 is configured and labelled — CA12, SLC2A12, ADCY1, PRSS3, ALDH1A1, GABBR2
+PASS  1.2a pathway A overrides the labels — 8 labels, all members
+PASS  1.2b pathway B overrides the labels — 5 labels, all members
+PASS  1.3 config is untouched mid-sequence — {"mode":"TOP N","n":"3","chips":null}
+PASS  1.4 the override still stands after reading the config
+PASS  1.2c pathway C overrides the labels — 6 labels, all members
+PASS  1.2d the three pathway states are pairwise distinct — A: MMP10/CREB3L1/WT1… · B: IGFBP2/CREB3L1/WNT3… · C: CCL2/FCER1G/ITGA1…
+PASS  1.5 Reset volcano is offered
+PASS  1.6 reset after A→B→C restores the exact TOP N set — CA12, SLC2A12, ADCY1, PRSS3, ALDH1A1, GABBR2
+PASS  1.7 no intermediate pathway state survives the reset — checked against all 3 pathway states
+PASS  1.8 config still reads TOP N = 3 after the whole sequence
+PASS  1.9 Generate R plot sends the configured TOP N — {"padj_cutoff":0.05,"lfc_cutoff":1,"n_label":3,"custom_genes":null,"plot_title":"MCW Project"}
+PASS  2.1 MY LIST labels exactly the configured genes — LRRC4B, MYL9, ALDH1A1, GABBR2
+PASS  2.2 five consecutive pathway switches each override live — A:8 → B:5 → C:6 → A:8 → B:5
+PASS  2.3 reset after five switches restores the exact MY LIST — LRRC4B, MYL9, ALDH1A1, GABBR2
+PASS  2.4 none of the five intermediate states survives
+PASS  2.5 the MY LIST config is untouched by the whole sequence — {"mode":"MY LIST","n":null,"chips":"ALDH1A1×|LRRC4B×|MYL9×|GABBR2×"}
+PASS  2.6 Generate R plot sends MY LIST, not any pathway — {"padj_cutoff":0.05,"lfc_cutoff":1,"n_label":0,"custom_genes":["ALDH1A1","LRRC4B","MYL9","GABBR2"],"plot_title":"MCW Project"}
+
+ALL PASS

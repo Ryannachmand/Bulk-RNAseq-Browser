@@ -21,6 +21,12 @@ export default function VolcanoSection({
   // Pathway label override — presentational, and only over the interactive
   // plot. It never touches labelMode/nLabel/customGenes, so the R-exact render
   // keeps printing whatever TOP N / MY LIST is actually configured.
+  //
+  // Deliberately a bare on/off flag and not a saved copy of the labels it
+  // replaced: `labelSymbols` below is recomputed from the live config, so
+  // switching pathways any number of times cannot leave Reset volcano pointing
+  // at an intermediate state. A snapshot recaptured per selection change would
+  // restore whichever pathway happened to be showing at the last switch.
   const [pathwayLabels, setPathwayLabels] = useState(false)
 
   // Label state is shared by both views — what you label is what R prints.
