@@ -1,63 +1,79 @@
-import { useState } from 'react'
-import HeatmapPlot from './HeatmapPlot'
+import { useMemo, useState } from 'react'
 import { getProjectCategoryHeatmap, renderProjectRCategoryHeatmaps } from '../api/client'
+import HeatmapPlot from './HeatmapPlot'
+import { ErrorMsg, ROutput, SegToggle, groupColorMap } from './ui'
 
-const TAB_PLOTLY = 'plotly'
-const TAB_R      = 'r'
+const VIEW = [
+  { value: 'interactive', label: 'Interactive' },
+  { value: 'r', label: 'R-exact' },
+]
 
-function CategoryPanel({ cat, samples, grouping, panelHeight }) {
+function CategoryCell({ cat, samples, grouping, groupColors, selectionSet }) {
   if (!cat.genes || cat.genes.length === 0) {
     return (
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 16, background: '#fafafa' }}>
-        <p style={{ color: '#9ca3af', margin: 0, fontSize: '0.85em' }}>
-          {cat.name} — no matching genes found in this FPKM matrix
+      <div style={{ background: 'var(--ground)', padding: '8px 9px 9px', minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 10.5 }}>{cat.name}</div>
+        <p className="t-note" style={{ margin: '6px 0 0' }}>
+          No matching genes in this FPKM matrix.
         </p>
       </div>
     )
   }
-
-  const data = {
-    genes: cat.genes,
-    samples,
-    z_scores: cat.z_scores,
-    fpkm_labels: cat.fpkm_labels,
-    grouping,
-  }
-
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, minWidth: 0 }}>
-      <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: '0.9em', borderRadius: '6px 6px 0 0' }}>
-        {cat.name}
-        <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: 8, fontSize: '0.85em' }}>
-          {cat.genes.length} genes
+    <div style={{ background: 'var(--ground)', padding: '8px 9px 9px', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <span style={{
+          fontWeight: 700, fontSize: 10.5, minWidth: 0,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {cat.name}
+        </span>
+        <span className="t-num" style={{
+          marginLeft: 'auto', flex: 'none',
+          fontWeight: 600, fontSize: 9.5, color: 'var(--ink-600)',
+        }}>
+          {cat.genes.length}
         </span>
       </div>
-      <div>
-        <HeatmapPlot data={data} panelHeight={panelHeight} />
+      <div style={{ marginTop: 6 }}>
+        <HeatmapPlot
+          data={{
+            genes: cat.genes,
+            samples,
+            z_scores: cat.z_scores,
+            fpkm_labels: cat.fpkm_labels,
+            grouping,
+          }}
+          selectionSet={selectionSet}
+          groupColors={groupColors}
+          labelWidth={72}
+          cellHeight={14}
+          showCellLabels={false}
+          showLegend={false}
+        />
       </div>
     </div>
   )
 }
 
-export default function CategoryHeatmapSection({ projectId }) {
-  const [nTopGenes, setNTopGenes]   = useState(40)
-  const [subtab, setSubtab]         = useState(TAB_PLOTLY)
+export default function CategoryHeatmapSection({ projectId, selectionSet }) {
+  const [view, setView] = useState('interactive')
+  const [nTopGenes, setNTopGenes] = useState(40)
 
-  const [loading, setLoading]       = useState(false)
+  const [loading, setLoading] = useState(false)
   const [heatmapData, setHeatmapData] = useState(null)
-  const [dataError, setDataError]   = useState(null)
+  const [dataError, setDataError] = useState(null)
 
-  const [rLoading, setRLoading]     = useState(false)
-  const [rImageUrl, setRImageUrl]   = useState(null)
-  const [rError, setRError]         = useState(null)
+  const [rLoading, setRLoading] = useState(false)
+  const [rImageUrl, setRImageUrl] = useState(null)
+  const [rError, setRError] = useState(null)
 
   async function loadHeatmap() {
     setLoading(true)
     setDataError(null)
     setHeatmapData(null)
     try {
-      const data = await getProjectCategoryHeatmap(projectId, nTopGenes)
-      setHeatmapData(data)
+      setHeatmapData(await getProjectCategoryHeatmap(projectId, nTopGenes))
     } catch (e) {
       setDataError(e.message)
     } finally {
@@ -70,8 +86,7 @@ export default function CategoryHeatmapSection({ projectId }) {
     setRError(null)
     setRImageUrl(null)
     try {
-      const url = await renderProjectRCategoryHeatmaps(projectId, nTopGenes)
-      setRImageUrl(url)
+      setRImageUrl(await renderProjectRCategoryHeatmaps(projectId, nTopGenes))
     } catch (e) {
       setRError(e.message)
     } finally {
@@ -79,110 +94,88 @@ export default function CategoryHeatmapSection({ projectId }) {
     }
   }
 
-  const tabStyle = (active) => ({
-    padding: '0.3rem 0.9rem',
-    border: '1px solid #ccc',
-    borderBottom: active ? '1px solid #fff' : '1px solid #ccc',
-    background: active ? '#fff' : '#f5f5f5',
-    cursor: 'pointer',
-    fontWeight: active ? 600 : 400,
-    fontSize: '0.88em',
-    marginBottom: -1,
-    position: 'relative',
-  })
+  const groupColors = useMemo(
+    () => groupColorMap(heatmapData?.grouping?.group_order || [], null),
+    [heatmapData]
+  )
+
+  const active = heatmapData?.categories?.filter(c => c.genes && c.genes.length > 0) ?? []
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <label style={{ fontSize: '0.9em' }}>
-          Top genes per category:&nbsp;
-          <input
-            type="number" min={1} max={200} value={nTopGenes}
-            onChange={e => setNTopGenes(Number(e.target.value))}
-            style={{ width: 60, padding: '3px 5px', border: '1px solid #ccc', borderRadius: 3 }}
-          />
-        </label>
-
-        <button
-          onClick={loadHeatmap}
-          disabled={loading}
-          style={{ padding: '4px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.88em' }}
-        >
-          {loading ? 'Loading…' : 'Load heatmap'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <SegToggle ariaLabel="Category heatmap view" options={VIEW} value={view} onChange={setView} />
+        <label className="t-util t-util-field" htmlFor="ch-n">Top genes per category</label>
+        <input id="ch-n" type="number" className="fld" style={{ width: 64 }}
+               min={1} max={200} value={nTopGenes}
+               onChange={e => setNTopGenes(Number(e.target.value))} />
+        <button type="button" className="btn btn-outline" onClick={loadHeatmap} disabled={loading}>
+          {loading ? 'Loading…' : heatmapData ? 'Reload heatmap' : 'Load heatmap'}
         </button>
       </div>
 
-      {dataError && <p style={{ color: '#dc2626' }}><strong>Error:</strong> {dataError}</p>}
+      <ErrorMsg>{dataError}</ErrorMsg>
 
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc', marginBottom: 0 }}>
-        <button style={tabStyle(subtab === TAB_PLOTLY)} onClick={() => setSubtab(TAB_PLOTLY)}>
-          Interactive
-        </button>
-        <button style={tabStyle(subtab === TAB_R)} onClick={() => setSubtab(TAB_R)}>
-          R-exact plot
-        </button>
-      </div>
-
-      <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1rem', background: '#fff' }}>
-        {subtab === TAB_PLOTLY && (
-          <div>
-            {!heatmapData && !loading && (
-              <p style={{ color: '#6b7280', margin: 0 }}>
-                Click "Load heatmap" to render panels for all active categories.
-              </p>
-            )}
-            {loading && <p style={{ color: '#555' }}>Computing z-scores…</p>}
-            {heatmapData && (() => {
-              const active = heatmapData.categories.filter(c => c.genes && c.genes.length > 0)
-              const nCols = 2
-              const nRows = Math.max(1, Math.ceil(active.length / nCols))
-              // Give each panel at least 550px; viewport-fraction keeps single-row panels from
-              // being comically tall. Grid may scroll vertically — that's intentional.
-              const panelHeight = Math.max(550, Math.floor((window.innerHeight * 0.9) / nRows))
-              return (
-                <div>
-                  <p style={{ color: '#6b7280', fontSize: '0.82em', margin: '0 0 12px' }}>
-                    {active.length} active categor{active.length === 1 ? 'y' : 'ies'} · {heatmapData.samples.length} samples
-                  </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-                    {heatmapData.categories.map((cat, i) => (
-                      <CategoryPanel key={i} cat={cat} samples={heatmapData.samples} grouping={heatmapData.grouping} panelHeight={panelHeight} />
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-        )}
-
-        {subtab === TAB_R && (
-          <div>
-            <p style={{ margin: '0 0 10px', color: '#374151', fontSize: '0.9em' }}>
-              Renders all active categories using pheatmap in R, matching BulkSIX3SB's
-              z-score + FPKM-label style. Output is 300 dpi PNG + PDF.
+      {view === 'interactive' && (
+        <>
+          {!heatmapData && !loading && (
+            <p className="t-body" style={{ margin: 0 }}>
+              Click <strong>Load heatmap</strong> to render a panel for each active category.
             </p>
-            <button
-              onClick={generateRPlot}
-              disabled={rLoading}
-              style={{ padding: '5px 16px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.9em' }}
-            >
+          )}
+          {loading && <p className="msg-wait">Computing z-scores…</p>}
+          {heatmapData && (
+            <>
+              <p className="t-note" style={{ margin: '0 0 8px' }}>
+                {active.length} active categor{active.length === 1 ? 'y' : 'ies'} ·{' '}
+                {heatmapData.samples.length} samples · z-score fill, hover a cell for the FPKM.
+              </p>
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 2, background: 'var(--rule-soft)', border: '1px solid var(--rule-soft)',
+              }}>
+                {heatmapData.categories.map((cat, i) => (
+                  <CategoryCell
+                    key={cat.name + i}
+                    cat={cat}
+                    samples={heatmapData.samples}
+                    grouping={heatmapData.grouping}
+                    groupColors={groupColors}
+                    selectionSet={selectionSet}
+                  />
+                ))}
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
+                paddingTop: 8, borderTop: '1px solid var(--rule-hair)',
+              }}>
+                <span className="t-util">z −3</span>
+                <span className="z-ramp" aria-hidden="true" style={{ width: 120 }} />
+                <span className="t-util">+3</span>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {view === 'r' && (
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ width: 196, flex: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <p className="t-note" style={{ margin: 0 }}>
+              Rendered by <code className="t-mono">render_category_heatmaps.R</code> — pheatmap
+              in the BulkSIX3SB z-score + FPKM-label style. 300 dpi PNG plus PDF.
+            </p>
+            <button type="button" className="btn btn-primary" onClick={generateRPlot} disabled={rLoading}>
               {rLoading ? 'Generating…' : 'Generate R plot'}
             </button>
-
-            {rLoading && <p style={{ color: '#555', marginTop: 8 }}>Running R… this may take 30–60 s.</p>}
-            {rError && <p style={{ color: '#dc2626', marginTop: 8 }}><strong>Error:</strong> {rError}</p>}
-            {rImageUrl && (
-              <div style={{ marginTop: 14 }}>
-                <img
-                  src={rImageUrl}
-                  alt="R category heatmaps"
-                  style={{ maxWidth: '100%', border: '1px solid #e5e7eb', borderRadius: 4 }}
-                />
-              </div>
-            )}
+            {rLoading && <p className="msg-wait" style={{ margin: 0 }}>Running R — 30–60 s.</p>}
           </div>
-        )}
-      </div>
+          <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <ErrorMsg label="R error">{rError}</ErrorMsg>
+            <ROutput imgUrl={rImageUrl} filename="category_heatmaps.png" alt="R category heatmaps" />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

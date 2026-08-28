@@ -1,70 +1,75 @@
 import { useState } from 'react'
+import PanelFrame from './PanelFrame'
 import CategoryEditor from './CategoryEditor'
 import CategoryHeatmapSection from './CategoryHeatmapSection'
 import CategoryVolcanoSection from './CategoryVolcanoSection'
+import { SegToggle } from './ui'
 
-const SUBTAB_HEATMAP  = 'heatmap'
-const SUBTAB_VOLCANO  = 'volcano'
+export default function GeneCategoryPlotsSection({
+  projectId, hasFpkm, hasDe,
+  padjCutoff, lfcCutoff, selection, selectionSet,
+  expandedPanel, onToggleExpand,
+}) {
+  const [mode, setMode] = useState(hasDe ? 'volcano' : 'heatmap')
+  const [manageOpen, setManageOpen] = useState(false)
 
-export default function GeneCategoryPlotsSection({ projectId, hasFpkm, hasDe }) {
-  const defaultSubtab = hasFpkm ? SUBTAB_HEATMAP : SUBTAB_VOLCANO
-  const [subtab, setSubtab] = useState(defaultSubtab)
-  const [editorOpen, setEditorOpen] = useState(true)
-
-  const subtabStyle = (active) => ({
-    padding: '0.35rem 1.1rem',
-    border: '1px solid #ccc',
-    borderBottom: active ? '1px solid #fff' : '1px solid #ccc',
-    background: active ? '#fff' : '#f5f5f5',
-    cursor: 'pointer',
-    fontWeight: active ? 600 : 400,
-    fontSize: '0.9em',
-    marginBottom: -1,
-    position: 'relative',
-  })
+  const headerRight = (
+    <button type="button" className="btn btn-outline"
+            aria-expanded={manageOpen} onClick={() => setManageOpen(o => !o)}>
+      Manage
+    </button>
+  )
 
   return (
-    <div>
-      {/* Gene list editor — collapsible */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, marginBottom: 20, overflow: 'hidden' }}>
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 14px', background: '#f8fafc', cursor: 'pointer',
-            borderBottom: editorOpen ? '1px solid #e5e7eb' : 'none',
-          }}
-          onClick={() => setEditorOpen(x => !x)}
-        >
-          <span style={{ fontWeight: 600 }}>Gene List Editor</span>
-          <span style={{ color: '#6b7280', fontSize: '0.85em' }}>
-            {editorOpen ? 'collapse ▲' : 'expand ▼'}
-          </span>
+    <PanelFrame
+      id="categories"
+      title="Categories"
+      kicker={selection ? selection.label : '2×2 · shared taxonomy'}
+      headerRight={headerRight}
+      expandedPanel={expandedPanel}
+      onToggleExpand={onToggleExpand}
+      bodyStyle={{ padding: 0 }}
+    >
+      <div style={{
+        background: 'var(--ground-alt)',
+        borderBottom: '1.5px solid var(--rule-mid)',
+        padding: '10px 14px 11px',
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      }}>
+        <span className="t-util t-util-field">Rendering</span>
+        <SegToggle
+          ariaLabel="Category rendering"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'volcano', label: 'Volcano', disabled: !hasDe, title: hasDe ? undefined : 'Needs DE results' },
+            { value: 'heatmap', label: 'Heatmap', disabled: !hasFpkm, title: hasFpkm ? undefined : 'Needs an FPKM matrix' },
+          ]}
+        />
+        <span className="t-note" style={{ marginLeft: 'auto' }}>
+          taxonomy shared across both renderings
+        </span>
+      </div>
+
+      {manageOpen && (
+        <div style={{ borderBottom: '1.5px solid var(--rule-mid)', padding: '11px 14px 13px' }}>
+          <CategoryEditor />
         </div>
-        {editorOpen && (
-          <div style={{ padding: '12px 14px' }}>
-            <CategoryEditor />
-          </div>
-        )}
-      </div>
+      )}
 
-      {/* Subtabs — only show tabs that have data */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
-        {hasFpkm && (
-          <button style={subtabStyle(subtab === SUBTAB_HEATMAP)} onClick={() => setSubtab(SUBTAB_HEATMAP)}>
-            Categorized Heatmap
-          </button>
+      <div style={{ padding: '11px 14px 13px' }}>
+        {mode === 'volcano' && hasDe && (
+          <CategoryVolcanoSection
+            projectId={projectId}
+            padjCutoff={padjCutoff}
+            lfcCutoff={lfcCutoff}
+            selectionSet={selectionSet}
+          />
         )}
-        {hasDe && (
-          <button style={subtabStyle(subtab === SUBTAB_VOLCANO)} onClick={() => setSubtab(SUBTAB_VOLCANO)}>
-            Categorized Volcano
-          </button>
+        {mode === 'heatmap' && hasFpkm && (
+          <CategoryHeatmapSection projectId={projectId} selectionSet={selectionSet} />
         )}
       </div>
-
-      <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1.2rem', background: '#fff' }}>
-        {subtab === SUBTAB_HEATMAP && hasFpkm && <CategoryHeatmapSection projectId={projectId} />}
-        {subtab === SUBTAB_VOLCANO && hasDe && <CategoryVolcanoSection projectId={projectId} />}
-      </div>
-    </div>
+    </PanelFrame>
   )
 }
