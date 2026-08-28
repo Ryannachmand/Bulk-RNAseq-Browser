@@ -1,120 +1,235 @@
 # Bulk RNA-seq Browser
 
-*A single-screen dashboard for reading a bulk RNA-seq differential expression result — six linked panels over one project, with every interactive figure paired to the R render that actually produces the publication figure.*
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![Node 18+](https://img.shields.io/badge/node-18%2B-brightgreen)
 
-**Status:** working local tool, in active use against real lab projects. Not packaged for deployment.
+An interactive analysis environment for exploring bulk RNA-seq experiments and
+producing publication-ready figures from the same R/Bioconductor workflow the
+analysis itself runs on.
 
-![The dashboard with a pathway selected — the linked gene set is projected onto the volcano, heatmap and DE table at once](docs/screenshot.png)
+Bulk RNA-seq results are usually scattered across count matrices,
+differential-expression tables, pathway reports, heatmaps, and static PDFs.
+Bulk RNA-seq Browser brings those materials into one linked workspace.
+Researchers can import gene-level counts, STAR count folders, FPKM matrices, or
+existing differential-expression and pathway results; the application computes
+whichever analysis steps are missing; and six coordinated views — volcano,
+pathways, heatmap, PCA, DE table, and gene categories — read from the same
+project at once.
+
+Its central design goal is the connection between exploration and
+reproducibility. Interactive charts support rapid investigation, while every
+major visualization can be re-rendered through an R-exact path that invokes the
+same packages and plotting code used to produce the laboratory's published
+figures.
+
+**Current status:** Functional local research tool under active development.
+Validated end to end on one primary laboratory dataset; portability and
+cross-project validation remain in progress.
+
+![The dashboard with a pathway selected. The linked gene set is projected simultaneously onto the volcano labels, the heatmap rows, and the DE table ordering.](docs/screenshot.png)
+
+<sub>All six panels over one project, with the GO term <em>extracellular matrix
+organization</em> selected. The same 45 genes drive the volcano's labels, the
+heatmap's rows, and the top of the DE table.</sub>
+
+## Key capabilities
+
+| Capability | What it provides |
+|---|---|
+| **Flexible inputs** | Gene-level count matrices, STAR `ReadsPerGene.out.tab` folders, FPKM matrices, existing DE tables, or existing pathway-enrichment results |
+| **Integrated analysis** | Computes what is missing — FPKM from counts and a GENCODE GTF, differential expression, VST-based PCA, and GO enrichment |
+| **Linked exploration** | A pathway selection propagates into the volcano, heatmap, and DE table, each responding differently and reversibly |
+| **Reproducible figures** | Every interactive view is paired with an R-rendered counterpart driven by the same ggplot2/pheatmap code |
+| **Method routing** | DESeq2 for count data, limma for FPKM-only projects — chosen from the data, never a user-facing dropdown |
+| **Provenance** | Each project records whether its DE results were uploaded or computed, and by which method; the label stays visible above the panels |
+| **Scale** | Interactive rendering and hover tested on a 63,140-gene result with no per-point listeners |
 
 ## Why this exists
 
-The lab's bulk RNA-seq work arrives as finished analysis directories, one per
-collaborator, each with slightly different conventions: some hand over a STAR
-`*.ReadsPerGene.out.tab` folder, some a raw counts matrix, some only an FPKM
-matrix, some a `DE_full_*.csv` that a DESeq2 script already wrote. Reading any
-one of them meant opening an R session, remembering which script produced which
-column names, and re-rendering a volcano to answer a question that took ten
-seconds to ask.
+Bulk RNA-seq interpretation tends to fragment. The differential-expression
+result lives in one table, the pathway enrichment in another, the heatmap and
+volcano in separate static PDFs, and the code that produced each in a one-off
+script. Answering a question that spans them — *which genes drive this enriched
+pathway, and where do they sit in the full result?* — becomes a manual
+cross-reference between files that were never designed to be read together.
 
-The other half of the problem is that the *answers* were fragmented. A volcano
-plot lives in one PDF, the pathway enrichment in another, the heatmap in a
-third — so the question "which of these genes are the ECM ones, and where do
-they sit on the volcano" was a manual cross-reference between three static
-images. This app puts all six views on one screen over one project's data, and
-makes the cross-reference a click.
+The inputs fragment too. Collaborating projects arrive with different
+conventions: some provide a STAR count folder, some a gene-level count matrix,
+some only an FPKM matrix, some a finished DE table written by an earlier script.
+Each previously required knowing which upstream tool produced which column names
+before anything could be plotted.
 
-It deliberately does not replace the lab's R. DESeq2, limma, clusterProfiler
-and the ggplot2/pheatmap renders run as real R subprocesses against the same
-packages the lab's own scripts use, so the numbers and the exported figures
-agree with the established pipeline rather than approximating it.
+This application addresses both. It accepts the common starting points rather
+than one rigid format, computes the analysis steps a given project is missing,
+and presents the results as six views over a single project so a researcher can
+move from a pathway-level finding to its contributing genes to their position in
+the full DE result without leaving the screen or re-deriving anything.
 
-## What this is
+It is explicitly not a replacement for the laboratory's R. DESeq2, limma,
+clusterProfiler and the ggplot2/pheatmap renderers run as real R subprocesses,
+because the statistical results and published figures should come from the
+established tools rather than from a reimplementation.
 
-A FastAPI backend and a React frontend over a **project** — a named bundle of up
-to four data sources (raw counts or a STAR output folder, an FPKM matrix, a DE
-results table, a pathway enrichment table) plus per-sample condition and batch
-metadata. Whatever is missing, the app computes: FPKM from raw counts and the
-species GTF, DE from counts, pathway enrichment from DE.
+## Linked exploration
 
-The dashboard is one screen, no tabs — a fixed project rail on the left, a
-status strip across the top, and a six-panel grid:
+Selecting a pathway is the application's central interaction, and it is
+deliberately **not** a single shared filter. Three panels respond, each in the
+way that panel's reading benefits from:
 
-| Panel | What it shows |
-|---|---|
-| **Volcano** | log2FC × −log10 padj, labelled by top-N-per-direction or your own gene list |
-| **Pathways** | clusterProfiler `enrichGO` biological-process terms, as a diverging up/down barplot |
-| **Heatmap** | z-score fill over FPKM, for the top-variable genes, your gene list, or a linked pathway |
-| **PCA** | sample clustering on a VST transform, raw or batch-corrected |
-| **DE table** | the full sortable, exportable result table |
-| **Categories** | a 2×2 of mini-volcanos or mini-heatmaps over four active gene categories |
+- **The volcano relabels.** Every point stays plotted and non-members are
+  dimmed, so the pathway is read in the context of the whole result. The gene
+  labels switch to the pathway's members while the user's own label
+  configuration is preserved underneath and restored exactly by `Reset volcano`
+  — including after a sequence of pathway switches.
+- **The heatmap switches gene set.** Its selector moves to `Linked pathway` and
+  re-fetches. A gene list the user had built is left untouched, and a manual
+  switch away is not undone on the next render.
+- **The DE table regroups.** No row is hidden. Members are lifted to the top of
+  the *entire* sorted result rather than the visible page, so a member far down
+  the table still surfaces, and the active column sort is preserved within both
+  groups.
 
-Every figure panel carries an **Interactive / R-exact** toggle. Interactive is
-the hand-rolled SVG chart — fast, hoverable, and it responds to the threshold
-sliders live. R-exact runs the corresponding `r_scripts/render_*.R` through
-`Rscript` and shows you the PNG that R actually drew. The two are deliberately
-not the same code path: the interactive plot is for exploring, the R render is
-for the figure that goes in the paper.
+The Categories panel deliberately does not participate: it is a fixed comparison
+frame, and a selection-dependent reference frame would not be one. This is
+enforced by a test asserting its markup is byte-identical before and after a
+selection.
 
-### The linking, which is the point
+Full per-panel mechanics, including the reset semantics and the reasoning behind
+each choice, are in **[docs/linked-exploration.md](docs/linked-exploration.md)**.
 
-Click a bar in the Pathways panel and its gene set is projected across the
-dashboard at once. What makes it worth building is that the three panels
-respond *differently*, each in the way that panel's own reading actually
-benefits from — not one shared "filter to these genes":
+## Interactive and R-exact figures
 
-**The volcano relabels.** Every point stays plotted; genes outside the set are
-dimmed, and the gene labels are replaced by the pathway's members. The
-label configuration underneath (Top N, or your own list) is untouched — so the
-override is presentational only, a `Reset volcano` button restores the exact
-label set you had, and the R-exact render keeps printing your configured labels,
-never the pathway's.
+Every figure panel carries an `Interactive` / `R-exact` toggle, and the two are
+intentionally different code paths rather than one renderer in two modes.
 
-**The heatmap re-fetches.** Its gene-set selector auto-switches to `Linked
-pathway` and the rows become the pathway's genes. A gene list you had typed into
-`My gene list` survives untouched, and switching back to it manually is not
-undone on the next re-render.
+**Interactive** views are hand-written SVG. They respond live to the global padj
+and |log2FC| controls, support hover inspection, and exist to make exploration
+fast.
 
-**The DE table regroups.** No row is hidden. Members are lifted to the top of
-the *entire* sorted result — not just the visible page — and non-members are
-dimmed in place, so a member 40,000 rows down still surfaces. Re-sorting on any
-column re-sorts both groups and keeps the grouping; `Reset DE table` collapses
-it back to one flat sort.
+**R-exact** views run the corresponding `backend/r_scripts/render_*.R` through
+`Rscript` and return the PNG and PDF that R actually drew — the same ggplot2 and
+pheatmap code, producing the artifact that goes into a report or a manuscript.
 
-The Categories panel deliberately does *not* participate: its taxonomy is a
-fixed comparison frame, and letting a pathway selection dim it would make the
-2×2 mean something different from one moment to the next.
+Separating them is what lets the interactive layer take liberties for the sake of
+responsiveness — decimated label placement, dimming, live threshold updates —
+without any risk that those liberties reach an exported figure. The pathway
+label override, for instance, never propagates to the R render: `Generate R plot`
+sends the user's configured labels, never the selected pathway's members.
 
-## Highlights
+## Example workflow
 
-- **Hand-rolled SVG charts, not Plotly.** The design system specifies a
-  zero-radius, flat, single-accent geometry that Plotly's chrome fights at every
-  turn, so the three Plotly charts were rewritten as plain SVG. Measured on this
-  repo: the last Plotly build produces a **4,971.51 kB** JS bundle; the current
-  build produces **247.78 kB** (74.46 kB gzipped) — a 20× reduction, and the
-  removal of the app's only heavyweight dependency.
-- **Hover at full annotation scale.** The primary validation project carries
-  **63,140 genes**. Attaching a listener per mark at that scale is visibly slow,
-  so `ChartHover.jsx` runs exactly one `pointermove` listener per chart and finds
-  the point under the cursor by nearest-neighbour lookup against a uniform bucket
-  grid, rebuilt once per data change. Charts hold their `<svg>` in a `useMemo` so
-  a hover never re-renders the 63,140-point path.
-- **R by subprocess, for exact parity.** DE is run through DESeq2 and limma via
-  `Rscript`, not pydeseq2 — the lab's historical results were produced by these
-  packages, and a Python reimplementation would silently disagree at the fourth
-  decimal. Same reasoning for the renders: ggplot2 and pheatmap draw them.
-- **DE method routing is automatic, never a user-facing choice.** Raw counts
-  present means DESeq2 on the counts; FPKM only means limma on log2(FPKM+1).
-  There is no dropdown, because picking wrong is a statistics error, not a
-  preference.
-- **Provenance is persistent, not incidental.** Every project records how its DE
-  table came to exist — `uploaded`, `DESeq2 (raw counts)`, or `limma
-  (FPKM-only)` — and the status strip shows it above the panels for as long as
-  the project is open.
-- **Locked panels explain themselves.** A panel with no data to draw renders a
-  ghosted skeleton, a reason generated from the project's live capability flags,
-  and a button that goes to the fix — not an empty box.
+**1. Create a project.** Attach whatever the experiment has: a count matrix, a
+STAR output folder, an FPKM matrix, a DE table, a pathway table, or several at
+once. Counts and FPKM also require a species, which resolves the GENCODE GTF used
+for FPKM and gene symbols and the `org.*.eg.db` package used for enrichment. Each
+input is parsed, its columns normalized, and a capability flag recorded.
 
-## Architecture at a glance
+**2. Confirm sample metadata.** Condition and batch per sample. Conditions are
+pre-suggested by stripping a trailing `_N` replicate suffix from sample names and
+flagged as inferred; the suggestion is always editable.
+
+**3. Choose a contrast.** Pick reference and comparison levels. The statistical
+method follows the data — DESeq2 when counts exist, limma when only FPKM does.
+DESeq2 fits the full multi-level design once and extracts the pairwise result
+with `results(dds, contrast = ...)`, so every contrast from one project shares
+pooled dispersion estimates.
+
+**4. Read the six panels.** The padj and |log2FC| controls in the status strip are
+global: moving one re-derives the significant-gene counts and re-colors the
+volcano, DE table, and category volcanos together, so a threshold means the same
+thing everywhere on screen.
+
+**5. Follow a pathway across panels.** Selecting an enriched GO term projects its
+member genes into the volcano, heatmap, and DE table simultaneously.
+
+**6. Expand and export.** Any panel opens full-size with live hover tooltips.
+Switching it to `R-exact` runs the R renderer and returns the publication figure.
+
+## Analysis methods and assumptions
+
+The application makes several methodological choices that affect results, and
+they are documented rather than implied.
+
+Gene length for FPKM comes from the count matrix's own `Length` column when
+present and otherwise from **union exon length** computed from the GENCODE GTF —
+both conventions occur in real projects and disagree, so the app reproduces
+whichever the input carries. DE method routing is automatic: **DESeq2** on counts,
+**limma on log2(FPKM+1)** when only FPKM exists. Batch enters the DE design
+formula as a covariate when present, and separately drives a
+`limma::removeBatchEffect` correction in the PCA display only — the corrected
+matrix never feeds DE. GO enrichment runs **separately for up- and
+down-regulated genes**, against a universe of the genes actually tested in that
+experiment rather than the whole genome, with Benjamini–Hochberg correction
+applied independently of the DE correction. This application applies **no
+low-count pre-filter** of its own; DESeq2's built-in independent filtering still
+operates inside `results()`.
+
+The FPKM-only limma route is a fallback, not an equivalent: it fits a normal
+linear model to log-transformed FPKM rather than modeling counts with a
+negative-binomial mean–variance relationship, uses no `voom` precision weights,
+and inherits FPKM's lack of a cross-sample composition correction. Results from
+that route are labelled `limma (FPKM-only)` wherever they appear.
+
+Full detail — identifier and duplicate handling, missing-value propagation,
+sample reconciliation, exact parameters, and known edge cases — is in
+**[docs/methods.md](docs/methods.md)**.
+
+## Quickstart
+
+Both processes run at the same time.
+
+**Backend**
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+**Frontend** (second terminal)
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host
+```
+
+Vite serves on `http://localhost:5173`. The frontend defaults to the backend on
+port 8000 of the host that served the page; set `VITE_API_BASE` to point
+elsewhere.
+
+**Requirements**
+
+- Python 3.12 (developed against 3.12.2)
+- Node 18+ (developed against 18.19.1 / npm 9.2.0; Vite 5 requires Node 18+)
+- R with the Bioconductor stack below, reachable either as a conda environment
+  named `r-env` or as `Rscript` on `PATH`
+
+```
+DESeq2  limma  clusterProfiler  AnnotationDbi  org.Hs.eg.db  org.Mm.eg.db
+pheatmap  ggplot2  ggrepel  patchwork  RColorBrewer  scales  grid
+dplyr  readr  tidyverse  jsonlite
+```
+
+FPKM computation and symbol mapping need a GENCODE GTF — human v46 (GRCh38) or
+mouse vM35 (GRCm39).
+
+**Configuration**
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `VITE_API_BASE` | Backend base URL used by the frontend build | `http://<page host>:8000` |
+| `BULKRNASEQ_GTF_HUMAN` | Human GENCODE GTF path | the development machine's path |
+| `BULKRNASEQ_GTF_MOUSE` | Mouse GENCODE GTF path | the development machine's path |
+| `BULKRNASEQ_R_ENV` | Conda environment holding the Bioconductor stack | `r-env` |
+
+STAR is **not** a runtime dependency. The application reads STAR's gene-count
+output format; it does not run the aligner and does not accept FASTQ or BAM.
+
+Project data is written to `data/` at the repository root as JSON and CSV. There
+is no database.
+
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -147,103 +262,72 @@ flowchart TB
   Routers -->|subprocess.run| Render
 ```
 
-## How it works
+Four engineering decisions worth calling out, because each was a trade-off rather
+than a default:
 
-**1. Start a project.** From the entrance screen you name a project and attach
-whatever you have: an FPKM matrix, a DE results table, a pathway results table, a
-raw counts matrix, or a flat STAR output folder of `*.ReadsPerGene.out.tab`
-files. Raw counts and FPKM also need a species — human or mouse — because that
-resolves both the GTF used to compute FPKM and the OrgDb used later by pathway
-enrichment. The backend parses each file, normalises the column names it
-recognises, and records a capability flag per data source.
+**Charts are hand-written SVG, not a charting library.** The interface specifies a
+flat, zero-radius, single-accent geometry that Plotly's chrome resisted at every
+turn, so the three Plotly charts were rewritten as plain SVG. Measured in this
+repository: the last Plotly-based commit builds to a **4,971.51 kB** JavaScript
+bundle; the current build is **247.78 kB** (74.46 kB gzipped) — roughly a 20×
+reduction alongside the removal of the application's only heavyweight dependency.
 
-**2. Fill in the sample metadata.** Condition and batch per sample, in an
-editable table; condition groups are pre-guessed from the trailing `_N`
-replicate suffix in the sample names, which is right often enough to be worth
-offering and easy enough to correct when it isn't.
+**Hover scales without per-point listeners.** The primary validation project
+carries 63,140 genes, and attaching a mouse handler per mark at that scale is
+visibly slow. `ChartHover.jsx` instead runs exactly one `pointermove` listener per
+chart and resolves the point under the cursor by nearest-neighbour lookup against
+a uniform spatial bucket grid, rebuilt once per data change. Charts hold their
+`<svg>` in a `useMemo`, so hover state changes never re-render the point geometry.
 
-**3. Pick a contrast and run.** Choose a reference level and a comparison level
-in the rail and hit run. The method is decided for you from what the project
-carries. DESeq2 fits the full multi-level design and the pairwise result is
-extracted with `contrast=`, rather than re-fitting per pair; batch enters the
-design formula when the metadata has more than one batch.
+**R runs as a subprocess rather than being ported to Python.** DESeq2 and limma
+are invoked through `Rscript`, not reimplemented with pydeseq2 or equivalent,
+because the reference results and published figures were produced by these
+packages and a parallel implementation would introduce discrepancies with no
+scientific benefit.
 
-**4. The six panels populate.** Each renders from the project's own data as soon
-as its inputs exist. The status strip's padj and |log2FC| sliders are global —
-moving one re-derives the up/down counts and re-colours the volcano, the DE table
-and the category volcanos together, because a threshold that means one thing in
-one panel and another thing in the next is worse than no threshold at all.
+**Panels missing an input explain themselves.** A panel that cannot render shows a
+ghosted skeleton, a reason generated from the project's live capability flags, and
+a button that navigates to the fix — rather than appearing empty, silently
+disabled, or, worse, rendering a kicker that describes a transform which never
+ran.
 
-**5. Click a pathway to cross-link.** Selecting a bar in the Pathways panel
-projects its gene set onto the volcano, heatmap and DE table simultaneously, each
-in its own way — the three behaviours described above. Escape, or the status
-strip's `Clear`, drops the selection; each panel's individual reset button drops
-only that panel's response and leaves the other two linked.
+## Testing and validation
 
-**6. Expand a panel for the real look.** Any panel opens to a modal over a scrim
-at full size, state preserved, with hover tooltips live on the interactive
-charts. Flip to `R-exact` there and the panel runs the R renderer and hands you
-the PNG and PDF that R drew — the figure, not an approximation of it.
+The application invokes the same R packages and rendering code used by the
+laboratory workflow, reducing discrepancies between interactive exploration and
+exported results. End-to-end parity has currently been validated on one primary
+project.
 
-## Prerequisites
+- **Backend:** 10 parser tests (`cd backend && pip install -r requirements-dev.txt && python -m pytest`).
+- **Browser:** three Playwright suites in `frontend/validation/` drive the real
+  dashboard against the real backend. They cover cross-panel pathway
+  propagation, volcano reset semantics across multi-pathway switch sequences,
+  and recovery from a dropped backend. They are not part of the build; see
+  `frontend/validation/README.md` for how to run them out of tree.
+- **Primary validation project:** raw counts + computed FPKM + DESeq2 DE +
+  enrichGO pathways, 63,140 genes, 9 samples across 3 conditions.
 
-- **Python 3.12** (developed against 3.12.2)
-- **Node 18+** (developed against 18.19.1 / npm 9.2.0; Vite 5 requires 18+)
-- **R**, reachable either as a conda environment named `r-env` or as a bare
-  `Rscript` on `PATH`. The backend prefers `conda run --no-capture-output -n
-  r-env Rscript` and falls back to `Rscript`.
+## Current limitations
 
-R packages actually invoked by `backend/r_scripts/`:
+- **Cross-project validation is in progress.** End-to-end validation currently
+  centers on one primary project. Other projects exercise individual entry
+  points rather than the full path.
+- **Projects without replication are not supported.** Both matrix parsers require
+  at least two sample columns, and grouped rendering requires at least two
+  conditions with more than one sample each. An n=1 project degrades rather than
+  failing cleanly.
+- **A single non-empty batch level breaks the DESeq2 run.** If every sample shares
+  one batch label, the design branches to `~ batch + condition` and R fails on a
+  one-level factor. The limma path guards against this; the DESeq2 path does not.
+  Documented in [docs/methods.md](docs/methods.md).
+- **Test coverage is uneven.** Browser coverage of the linked-selection behaviour
+  is thorough; backend coverage is 10 tests over one parser. Python dependencies
+  are unpinned.
+- **Not packaged for deployment.** Environment variables now cover the GTF paths,
+  the R environment name, and the API base URL, but there is no container image,
+  no authentication, and no multi-user support. It runs as two local processes.
 
-```
-DESeq2  limma  clusterProfiler  AnnotationDbi  org.Hs.eg.db  org.Mm.eg.db
-pheatmap  ggplot2  ggrepel  patchwork  RColorBrewer  scales  grid
-dplyr  readr  tidyverse  jsonlite
-```
-
-A GENCODE GTF is needed to compute FPKM from raw counts — human v46 (GRCh38) and
-mouse vM35 (GRCm39). Its location is currently hardcoded for the lab's single
-deployment machine in `backend/app/routers/projects.py`; making it configurable
-is a small change and an open item below. STAR itself is *not* a runtime
-dependency — the app only reads STAR's output format, it never runs the aligner.
-
-## Quickstart
-
-Both halves must run at the same time; the frontend has the backend's base URL
-hardcoded in `frontend/src/api/client.js`.
-
-Backend:
-
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-Frontend, in a second terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev -- --host
-```
-
-Vite serves on `http://localhost:5173`. Project data is written to `data/` at the
-repo root, which is gitignored — nothing about a project lives in the database
-sense, it's JSON and CSV on disk.
-
-Backend tests (10 parser tests; `pytest` is not in `requirements.txt`, so
-install it first):
-
-```bash
-cd backend && pip install pytest && python -m pytest
-```
-
-The three Playwright suites under `frontend/validation/` drive the real
-dashboard against the real backend and are not part of the build; see
-`frontend/validation/README.md` for how to run them out of tree.
-
-## Repository layout
+## Repository structure
 
 ```
 bulkrnaseq-browser/
@@ -260,40 +344,23 @@ bulkrnaseq-browser/
 │   │                           render_volcano, render_heatmap, render_pca,
 │   │                           render_pathway_barplot, render_category_*
 │   ├── tests/                  pytest — parser fixtures
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── requirements-dev.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx             dashboard shell, shared thresholds + selection
-│   │   ├── index.css           the design system — colour, type, rules
+│   │   ├── index.css           design tokens — color, type, rule weights
 │   │   ├── api/client.js       every backend call, one module
 │   │   └── components/         panel sections, SVG plots, ChartHover, ui.jsx
 │   ├── validation/             Playwright suites (not part of the build)
 │   ├── vite.config.js
 │   └── package.json
-├── docs/screenshot.png
+├── docs/
+│   ├── methods.md              analysis methods and assumptions
+│   ├── linked-exploration.md   per-panel behavior of a pathway selection
+│   └── screenshot.png
 └── data/                       runtime project storage (gitignored)
 ```
-
-## Status
-
-- **Single-sample groups aren't supported by any panel.** Grouping and
-  colour-banding require at least two conditions with more than one sample each
-  (`n_groups >= 2 && n_groups < n_samples`), and DESeq2 needs replicates. An n=1
-  project currently degrades rather than failing cleanly.
-- **Cross-project validation is still in progress.** One project — raw counts +
-  computed FPKM + DESeq2 DE + enrichGO pathways, 63,140 genes, 9 samples across 3
-  conditions — is verified end to end against the lab's own R output and is what
-  the Playwright suites drive. The other projects in the working set exercise
-  individual entry points, not the whole path.
-- **Deployment-machine assumptions are hardcoded.** The GENCODE GTF paths, the
-  `r-env` conda environment name, and the backend base URL in the frontend client
-  are all fixed values rather than configuration. Fine for one workstation, the
-  first thing to change for a second.
-- **`plotly.js` is still listed in `package.json`.** Nothing in `src/` imports it
-  since the SVG rewrite; it is dead weight in `node_modules` and should be
-  removed from the dependency list.
-- **Test coverage is uneven.** The Playwright suites cover the cross-panel
-  linking behaviour thoroughly; backend coverage is 10 tests over one parser.
 
 ## Author
 

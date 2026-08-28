@@ -1,4 +1,7 @@
-const BASE = `http://${window.location.hostname}:8000`
+// Backend base URL. Defaults to the same host the page was served from, on
+// port 8000 — the local two-process dev setup. Override at build time with
+// VITE_API_BASE (e.g. VITE_API_BASE=https://api.example.org npm run build).
+const BASE = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:8000`
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 

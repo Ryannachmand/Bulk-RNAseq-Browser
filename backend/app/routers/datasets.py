@@ -85,15 +85,22 @@ R_ENRICHGO_SCRIPT = os.path.join(
 )
 
 
+# Conda environment holding the Bioconductor stack. Override with BULKRNASEQ_R_ENV.
+R_CONDA_ENV = os.environ.get("BULKRNASEQ_R_ENV", "r-env")
+
+
 def _find_rscript() -> list[str]:
-    """Return the command prefix to run Rscript in the r-env conda environment."""
+    """Return the command prefix to run Rscript in the Bioconductor conda environment."""
     conda = shutil.which("conda")
     if conda:
-        return [conda, "run", "--no-capture-output", "-n", "r-env", "Rscript"]
+        return [conda, "run", "--no-capture-output", "-n", R_CONDA_ENV, "Rscript"]
     rscript = shutil.which("Rscript")
     if rscript:
         return [rscript]
-    raise FileNotFoundError("Rscript not found; install r-env conda environment")
+    raise FileNotFoundError(
+        f"Rscript not found; create the '{R_CONDA_ENV}' conda environment "
+        "or put Rscript on PATH"
+    )
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────

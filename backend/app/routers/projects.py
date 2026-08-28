@@ -58,10 +58,18 @@ from app.routers.datasets import (
 
 router = APIRouter(prefix="/projects")
 
-# Hardcoded for this specific machine — this app runs on one host; not a config file.
+# GENCODE GTFs, used to compute FPKM from raw counts and to map gene IDs to
+# symbols. The defaults are this deployment machine's paths; set BULKRNASEQ_GTF_HUMAN
+# and BULKRNASEQ_GTF_MOUSE to run anywhere else.
 GTF_PATHS = {
-    "human": "/home/ryannachman/programs/STAR-2.7.11b/refs/downloads/gencode.v46.primary_assembly.annotation.gtf",
-    "mouse": "/home/ryannachman/programs/STAR-2.7.11b/refs/downloads/gencode.vM35.primary_assembly.annotation.gtf",
+    "human": os.environ.get(
+        "BULKRNASEQ_GTF_HUMAN",
+        "/home/ryannachman/programs/STAR-2.7.11b/refs/downloads/gencode.v46.primary_assembly.annotation.gtf",
+    ),
+    "mouse": os.environ.get(
+        "BULKRNASEQ_GTF_MOUSE",
+        "/home/ryannachman/programs/STAR-2.7.11b/refs/downloads/gencode.vM35.primary_assembly.annotation.gtf",
+    ),
 }
 
 R_DESEQ2_SCRIPT = os.path.join(
