@@ -1,4 +1,7 @@
 import { useMemo } from 'react'
+import { ChartTooltip, useNearestHover } from './ChartHover'
+import { usePanelExpanded } from './PanelContext'
+import { fmtExp, fmtNum, fmtSigned, fpkmFields } from './ui'
 
 /**
  * Volcano, drawn as a plain SVG at the design geometry.
@@ -38,6 +41,12 @@ function circlesPath(pts, r) {
   return d
 }
 
+// Native browser tooltip, used in the compact grid view. In the expanded
+// state the hover tooltip below supersedes it and it is left off, so the two
+// never stack up on the same point.
+const hoverTitle = p =>
+  `${p.symbol}\nlog2FC: ${p.lfc.toFixed(3)}\npadj: ${p.padj.toExponential(2)}`
+
 // Push labels apart within an anchor group so they stay legible.
 function deCollide(items) {
   const out = []
@@ -69,7 +78,9 @@ export default function VolcanoPlot({
       const nlog = padj > 0 ? Math.min(-Math.log10(padj), 300) : 300
       const symbol = r.symbol && !String(r.symbol).startsWith('ENSG') ? r.symbol : r.gene
       const sig = padj < padjCutoff && Math.abs(lfc) > lfcCutoff
-      pts.push({ lfc, padj, nlog, symbol, sig, up: lfc > 0 })
+      // `row` is the source record by reference, not a copy — the tooltip
+      // reads its per-condition FPKM columns without a second 60k-row pass.
+      pts.push({ lfc, padj, nlog, symbol, sig, up: lfc > 0, row: r })
       if (Math.abs(lfc) > maxAbsLfc) maxAbsLfc = Math.abs(lfc)
       if (nlog > maxNlog) maxNlog = nlog
     }
@@ -134,12 +145,30 @@ export default function VolcanoPlot({
   const guideY = toY(-Math.log10(padjCutoff))
   const showGuideY = isFinite(guideY) && guideY > PLOT.y && guideY < PLOT.cy0
 
-  const hoverTitle = p =>
-    `${p.symbol}\nlog2FC: ${p.lfc.toFixed(3)}\npadj: ${p.padj.toExponential(2)}`
+  // ── Expanded-mode hover ───────────────────────────────────────────────
+  const expanded = usePanelExpanded()
 
-  return (
-    <div>
-      <svg viewBox="0 0 700 330" width="100%" role="img"
+  const hoverPoints = useMemo(
+    () => pts.map(p => ({ x: toX(p.lfc), y: toY(p.nlog), p })),
+    [pts, toX, toY]
+  )
+  const { ref, hover, handlers } = useNearestHover({ enabled: expanded, points: hoverPoints })
+
+  const tipRows = useMemo(() => {
+    const p = hover?.point?.p
+    if (!p) return []
+    return [
+      ['log2FC', fmtSigned(p.lfc, 3)],
+      ['padj', fmtExp(p.padj, 2)],
+      ...fpkmFields(p.row).map(([cond, v]) => [`FPKM ${cond}`, fmtNum(v, 2)]),
+    ]
+  }, [hover])
+
+  // The <svg> is held in a memo so a hover state change leaves its element
+  // identity untouched and React skips the entire subtree — without this the
+  // 60k-point path string would be rebuilt on every pointermove.
+  const chart = useMemo(() => (
+    <svg viewBox="0 0 700 330" width="100%" role="img"
            aria-label={`Volcano plot: ${counts.up} up, ${counts.down} down, ${counts.ns} not significant`}
            style={{ display: 'block' }}>
         <rect x={PLOT.x} y={PLOT.y} width={PLOT.w} height={PLOT.h}
@@ -163,7 +192,7 @@ export default function VolcanoPlot({
             {groups.inSel.map((p, i) => (
               <circle key={p.symbol + i} cx={p.xy[0]} cy={p.xy[1]} r="4.2" opacity="1"
                       fill={p.up ? 'var(--de-up)' : 'var(--de-down)'}>
-                <title>{hoverTitle(p)}</title>
+                {!expanded && <title>{hoverTitle(p)}</title>}
               </circle>
             ))}
           </>
@@ -172,12 +201,12 @@ export default function VolcanoPlot({
             <path d={circlesPath(groups.ns, 2.4)} fill="var(--de-ns)" opacity="0.75" />
             {groups.down.map((p, i) => (
               <circle key={'d' + i} cx={p.xy[0]} cy={p.xy[1]} r="3.1" opacity="0.9" fill="var(--de-down)">
-                <title>{hoverTitle(p)}</title>
+                {!expanded && <title>{hoverTitle(p)}</title>}
               </circle>
             ))}
             {groups.up.map((p, i) => (
               <circle key={'u' + i} cx={p.xy[0]} cy={p.xy[1]} r="3.1" opacity="0.9" fill="var(--de-up)">
-                <title>{hoverTitle(p)}</title>
+                {!expanded && <title>{hoverTitle(p)}</title>}
               </circle>
             ))}
           </>
@@ -215,6 +244,18 @@ export default function VolcanoPlot({
           −LOG10 PADJ
         </text>
       </svg>
+  ), [counts, toX, toY, lfcCutoff, guideY, showGuideY, selectionSet, groups, labels, xTicks, yTicks, expanded])
+
+  return (
+    <div ref={ref} {...handlers}>
+      {chart}
+
+      <ChartTooltip
+        anchorRef={ref}
+        hover={hover}
+        title={hover?.point?.p?.symbol}
+        rows={tipRows}
+      />
 
       {/* legend */}
       <div style={{

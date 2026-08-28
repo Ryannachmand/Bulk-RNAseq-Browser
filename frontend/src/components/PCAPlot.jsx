@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
-import { groupColorMap } from './ui'
+import { ChartTooltip, useNearestHover } from './ChartHover'
+import { usePanelExpanded } from './PanelContext'
+import { fmtNum, groupColorMap } from './ui'
 
 /**
  * PCA scatter at the design geometry: viewBox 0 0 442 268, plot rect
@@ -41,6 +43,11 @@ export default function PCAPlot({ block, rawBlock, pcX, pcY, varExplained }) {
     return samples.map((s, i) => ({
       s,
       cond: meta[s]?.condition ?? s,
+      batch: meta[s]?.batch ?? '',
+      // The PC coordinates themselves, kept alongside the pixel positions so
+      // the tooltip can report the values rather than the geometry.
+      vx: xs[i],
+      vy: ys[i],
       cx: px0 + ((xs[i] - xMin) / xSpan) * (px1 - px0),
       cy: py1 - ((ys[i] - yMin) / ySpan) * (py1 - py0),
     }))
@@ -49,8 +56,29 @@ export default function PCAPlot({ block, rawBlock, pcX, pcY, varExplained }) {
   const xTitle = `${pcX}: ${(varExplained[pcX] ?? 0).toFixed(1)}% variance`
   const yTitle = `${pcY}: ${(varExplained[pcY] ?? 0).toFixed(1)}% variance`
 
+  // ── Expanded-mode hover ───────────────────────────────────────────────
+  // These points are samples, not genes: no gene-level field belongs here.
+  const expanded = usePanelExpanded()
+
+  const hoverPoints = useMemo(
+    () => pts.map(p => ({ x: p.cx, y: p.cy, p })),
+    [pts]
+  )
+  const { ref, hover, handlers } = useNearestHover({ enabled: expanded, points: hoverPoints })
+
+  const tipRows = useMemo(() => {
+    const p = hover?.point?.p
+    if (!p) return []
+    return [
+      ['Condition', p.cond, false],
+      p.batch ? ['Batch', p.batch, false] : null,
+      [pcX, fmtNum(p.vx, 2)],
+      [pcY, fmtNum(p.vy, 2)],
+    ]
+  }, [hover, pcX, pcY])
+
   return (
-    <div>
+    <div ref={ref} {...handlers}>
       <svg viewBox="0 0 442 268" width="100%" role="img"
            aria-label={`PCA scatter, ${xTitle} against ${yTitle}`} style={{ display: 'block' }}>
         <rect x={PLOT.x} y={PLOT.y} width={PLOT.w} height={PLOT.h}
@@ -64,7 +92,8 @@ export default function PCAPlot({ block, rawBlock, pcX, pcY, varExplained }) {
         {pts.map(p => (
           <circle key={p.s} cx={p.cx} cy={p.cy} r="6"
                   fill={colorFor[p.cond]} stroke="#f3f2f2" strokeWidth="1.5">
-            <title>{`${p.s} · ${p.cond}`}</title>
+            {/* superseded by the hover tooltip once the panel is expanded */}
+            {!expanded && <title>{`${p.s} · ${p.cond}`}</title>}
           </circle>
         ))}
 
@@ -84,6 +113,13 @@ export default function PCAPlot({ block, rawBlock, pcX, pcY, varExplained }) {
           {yTitle}
         </text>
       </svg>
+
+      <ChartTooltip
+        anchorRef={ref}
+        hover={hover}
+        title={hover?.point?.p?.s}
+        rows={tipRows}
+      />
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',

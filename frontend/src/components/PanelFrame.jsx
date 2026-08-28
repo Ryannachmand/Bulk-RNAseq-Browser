@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import { PanelContext } from './PanelContext'
 
 /**
  * Presentational panel chrome. Defines the 2px-ruled header (title + kicker +
@@ -37,6 +38,9 @@ export default function PanelFrame({
   style,
 }) {
   const expanded = expandedPanel === id
+  // Published to the panel body so charts can add expanded-only interaction
+  // without a second mounted copy of themselves.
+  const panelCtx = useMemo(() => ({ expanded }), [expanded])
   const panelRef = useRef(null)
   const closeRef = useRef(null)
   const expandBtnRef = useRef(null)
@@ -134,7 +138,9 @@ export default function PanelFrame({
           </span>
         </div>
         <div className={'panel-body ' + bodyClassName} style={bodyStyle}>
-          {children}
+          <PanelContext.Provider value={panelCtx}>
+            {children}
+          </PanelContext.Provider>
         </div>
       </div>
     </>

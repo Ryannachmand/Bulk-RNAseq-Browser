@@ -202,3 +202,22 @@ export function fmtNum(v, digits = 2) {
   if (v == null || !isFinite(v)) return '—'
   return Number(v).toFixed(digits)
 }
+
+/**
+ * Per-condition mean expression carried on a DE row.
+ *
+ * A DESeq2 run through this app writes FPKM_<condition> columns alongside the
+ * statistics; an uploaded DE table may have none. Returns [condition, value]
+ * pairs, empty when the row does not carry them, so callers can show the
+ * field only where it actually exists.
+ */
+export function fpkmFields(row) {
+  if (!row) return []
+  const out = []
+  for (const k of Object.keys(row)) {
+    if (k.startsWith('FPKM_') && row[k] != null && isFinite(row[k])) {
+      out.push([k.slice(5), row[k]])
+    }
+  }
+  return out
+}

@@ -371,6 +371,43 @@ select.fld { appearance: none; background-image: none; }
 }
 .panel-scrim-close:hover { background: var(--accent); }
 
+/* ── Chart hover tooltip ────────────────────────────────────────────────── */
+/* Expanded panels only. A deliberate, narrow exception to "nothing floats
+   except the expand modal": it floats, but it does NOT get the modal's
+   shadow — the 1.5px ink border is the only separation from the chart, and
+   --ground steps down from the --surface-plot chart ground so the tooltip
+   reads as sitting on the panel rather than as a hole cut in the plot. */
+
+.chart-tip {
+  position: fixed;
+  left: 0; top: 0;
+  z-index: 70;              /* over .panel-expanded (60) */
+  pointer-events: none;
+  background: var(--ground);
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  padding: 6px 8px;
+  max-width: 280px;
+}
+.chart-tip-head {
+  font-weight: 700; font-size: 11.5px; line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chart-tip-row {
+  display: flex; align-items: baseline; gap: 14px;
+  line-height: 1.35;
+}
+.chart-tip-label { flex: none; }        /* .t-util carries the label role */
+.chart-tip-value {
+  margin-left: auto;
+  font-weight: 600; font-size: 11.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
 /* ── Tables ─────────────────────────────────────────────────────────────── */
 
 .dtable { width: 100%; border-collapse: collapse; }

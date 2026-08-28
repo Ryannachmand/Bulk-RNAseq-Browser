@@ -731,6 +731,9 @@ def get_project_category_volcano(project_id: str):
 
     cols = ["symbol", "log2FoldChange", "padj"]
     optional = [c for c in ["baseMean", "lfcSE", "stat", "pvalue"] if c in df.columns]
+    # Per-condition means, present when the DE run wrote them. Forwarded so the
+    # mini-volcano hover can report FPKM per condition like the main volcano.
+    optional += [c for c in df.columns if c.startswith("FPKM_") and c not in optional]
     all_genes = (
         df[cols + optional]
         .dropna(subset=["symbol", "log2FoldChange", "padj"])

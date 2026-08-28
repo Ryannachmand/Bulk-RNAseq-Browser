@@ -1,4 +1,7 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
+import { ChartTooltip, useTargetHover } from './ChartHover'
+import { usePanelExpanded } from './PanelContext'
+import { fmtNum } from './ui'
 
 /**
  * Expression heatmap drawn as DOM rows: z-score fill, raw FPKM as the cell
@@ -55,31 +58,46 @@ export default function HeatmapPlot({
     return out.filter(g => g.indices.length > 0)
   }, [samples, grouping])
 
-  return (
-    <div>
-      {/* group annotation row */}
-      <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', marginBottom: 5 }}>
-        <div style={{ width: labelWidth, flex: 'none' }} />
-        {columnGroups.map(g => (
-          <div key={g.name ?? 'all'} style={{ flex: `${g.indices.length} 1 0`, minWidth: 0 }}>
-            <div style={{
-              height: 5,
-              background: groupColors?.[g.name] || 'var(--ink)',
-            }} />
-            {g.name && (
-              <div style={{
-                marginTop: 4, fontWeight: 600, fontSize: 9.5, letterSpacing: '.1em',
-                textTransform: 'uppercase', color: 'var(--ink-600)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {g.name}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+  // ── Expanded-mode hover ───────────────────────────────────────────────
+  // Cells are DOM nodes, so the nearest-point search is unnecessary: one
+  // delegated listener resolves the cell under the cursor with closest(),
+  // which costs the same whether the matrix holds 40 cells or 8,000.
+  const expanded = usePanelExpanded()
 
-      {/* matrix */}
+  const resolveCell = useCallback(key => {
+    const [r, c] = key.split(',').map(Number)
+    const gene = genes[r]
+    const sample = samples[c]
+    if (gene == null || sample == null) return null
+    return {
+      gene,
+      sample,
+      group: grouping?.sample_to_group?.[sample] ?? null,
+      fpkm: fpkm_labels?.[r]?.[c],
+      z: z_scores?.[r]?.[c],
+    }
+  }, [genes, samples, grouping, fpkm_labels, z_scores])
+
+  const { ref, hover, handlers } = useTargetHover({
+    enabled: expanded,
+    selector: '[data-hover]',
+    resolve: resolveCell,
+  })
+
+  const tipRows = useMemo(() => {
+    const p = hover?.point
+    if (!p) return []
+    return [
+      [p.group ? 'Sample · group' : 'Sample', p.group ? `${p.sample} · ${p.group}` : p.sample, false],
+      ['FPKM', p.fpkm ?? '—'],
+      ['z-score', fmtNum(p.z, 2)],
+    ]
+  }, [hover])
+
+  // Memoised so a hover state change does not re-reconcile every cell — a
+  // 500-gene matrix is several thousand DOM nodes and the tooltip must not
+  // pay for them on each pointermove.
+  const matrix = useMemo(() => (
       <div>
         {genes.map((gene, r) => {
           const inSel = selectionSet ? selectionSet.has(gene) : null
@@ -108,7 +126,11 @@ export default function HeatmapPlot({
                     return (
                       <div
                         key={c}
-                        title={`${gene} · ${samples[c]} · z ${z == null ? '—' : z.toFixed(2)} · FPKM ${fpkm_labels?.[r]?.[c] ?? '—'}`}
+                        data-hover={`${r},${c}`}
+                        // Native title in the compact grid only — expanded,
+                        // the hover tooltip carries the same values.
+                        title={expanded ? undefined
+                          : `${gene} · ${samples[c]} · z ${z == null ? '—' : z.toFixed(2)} · FPKM ${fpkm_labels?.[r]?.[c] ?? '—'}`}
                         style={{
                           flex: '1 1 0', minWidth: 0, height: cellHeight,
                           background: zColor(z),
@@ -132,6 +154,42 @@ export default function HeatmapPlot({
           )
         })}
       </div>
+  ), [genes, columnGroups, samples, z_scores, fpkm_labels, selectionSet,
+      labelWidth, cellHeight, showCellLabels, expanded])
+
+  return (
+    <div ref={ref} {...handlers}>
+      {/* group annotation row */}
+      <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', marginBottom: 5 }}>
+        <div style={{ width: labelWidth, flex: 'none' }} />
+        {columnGroups.map(g => (
+          <div key={g.name ?? 'all'} style={{ flex: `${g.indices.length} 1 0`, minWidth: 0 }}>
+            <div style={{
+              height: 5,
+              background: groupColors?.[g.name] || 'var(--ink)',
+            }} />
+            {g.name && (
+              <div style={{
+                marginTop: 4, fontWeight: 600, fontSize: 9.5, letterSpacing: '.1em',
+                textTransform: 'uppercase', color: 'var(--ink-600)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {g.name}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* matrix */}
+      {matrix}
+
+      <ChartTooltip
+        anchorRef={ref}
+        hover={hover}
+        title={hover?.point?.gene}
+        rows={tipRows}
+      />
 
       {showLegend && (
         <div style={{

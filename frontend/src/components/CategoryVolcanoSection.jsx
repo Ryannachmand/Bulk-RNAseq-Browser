@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { getProjectCategoryVolcano, renderProjectRCategoryVolcanos } from '../api/client'
-import { ErrorMsg, ROutput, SegToggle } from './ui'
+import { ChartTooltip, useNearestHover } from './ChartHover'
+import { usePanelExpanded } from './PanelContext'
+import { ErrorMsg, ROutput, SegToggle, fmtExp, fmtNum, fmtSigned, fpkmFields } from './ui'
 
 /**
  * One 200x106 mini-volcano per active category, on a shared scale so the
@@ -45,8 +47,60 @@ function MiniVolcano({ cat, allGenes, scale, padjCutoff, lfcCutoff, selectionSet
     return { bg, up, down, ns, dim, nUp, nDown }
   }, [allGenes, catSet, scale, padjCutoff, lfcCutoff, selectionSet])
 
+  // ── Expanded-mode hover ───────────────────────────────────────────────
+  // Every plotted point is hoverable, background genes included: the cursor
+  // should not fall into a dead zone over a point that is visibly there.
+  const expanded = usePanelExpanded()
+
+  const hoverPoints = useMemo(() => {
+    const out = []
+    for (const r of allGenes) {
+      const lfc = r.log2FoldChange, padj = r.padj
+      if (lfc == null || padj == null || !isFinite(lfc)) continue
+      const nlog = padj > 0 ? Math.min(-Math.log10(padj), 300) : 300
+      out.push({ x: scale.x(lfc), y: scale.y(nlog), r, inCat: catSet.has(r.symbol) })
+    }
+    return out
+  }, [allGenes, scale, catSet])
+
+  const { ref, hover, handlers } = useNearestHover({
+    enabled: expanded,
+    points: hoverPoints,
+    hitPx: 10,          // the cells are small and sit two across — stay tight
+  })
+
+  const tipRows = useMemo(() => {
+    const h = hover?.point
+    if (!h) return []
+    return [
+      ['In category', h.inCat ? cat.name : 'no', false],
+      ['log2FC', fmtSigned(h.r.log2FoldChange, 3)],
+      ['padj', fmtExp(h.r.padj, 2)],
+      ...fpkmFields(h.r).map(([cond, v]) => [`FPKM ${cond}`, fmtNum(v, 2)]),
+    ]
+  }, [hover, cat.name])
+
+  // Memoised for the same reason as the main volcano: the background layer is
+  // every DE gene, and its path string must not be rebuilt on each pointermove.
+  const chart = useMemo(() => (
+    <svg viewBox="0 0 200 106" width="100%" role="img"
+         aria-label={`${cat.name}: ${nUp} up, ${nDown} down`}
+         style={{ display: 'block', marginTop: 5 }}>
+      <rect x="0.5" y="0.5" width="199" height="105"
+            fill="var(--surface-plot)" stroke="var(--rule-hair)" strokeWidth="1" />
+      <line x1={scale.x(0)} y1="1" x2={scale.x(0)} y2="105"
+            stroke="var(--rule-faint)" strokeWidth="1" />
+      <path d={circlesPath(bg, 1.3)} fill="var(--de-ns)" opacity="0.35" />
+      {dim.length > 0 && <path d={circlesPath(dim, 2.1)} fill="var(--de-dimmed)" opacity="0.14" />}
+      <path d={circlesPath(ns, 2.1)} fill="var(--overlay-ns)" opacity="0.8" />
+      <path d={circlesPath(down, 2.1)} fill="var(--overlay-down)" />
+      <path d={circlesPath(up, 2.1)} fill="var(--overlay-up)" />
+    </svg>
+  ), [cat.name, nUp, nDown, scale, bg, dim, ns, down, up])
+
   return (
-    <div style={{ background: 'var(--ground)', padding: '8px 9px 9px', minWidth: 0 }}>
+    <div ref={ref} {...handlers}
+         style={{ background: 'var(--ground)', padding: '8px 9px 9px', minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
         <span style={{
           fontWeight: 700, fontSize: 10.5, minWidth: 0,
@@ -62,19 +116,14 @@ function MiniVolcano({ cat, allGenes, scale, padjCutoff, lfcCutoff, selectionSet
         </span>
       </div>
 
-      <svg viewBox="0 0 200 106" width="100%" role="img"
-           aria-label={`${cat.name}: ${nUp} up, ${nDown} down`}
-           style={{ display: 'block', marginTop: 5 }}>
-        <rect x="0.5" y="0.5" width="199" height="105"
-              fill="var(--surface-plot)" stroke="var(--rule-hair)" strokeWidth="1" />
-        <line x1={scale.x(0)} y1="1" x2={scale.x(0)} y2="105"
-              stroke="var(--rule-faint)" strokeWidth="1" />
-        <path d={circlesPath(bg, 1.3)} fill="var(--de-ns)" opacity="0.35" />
-        {dim.length > 0 && <path d={circlesPath(dim, 2.1)} fill="var(--de-dimmed)" opacity="0.14" />}
-        <path d={circlesPath(ns, 2.1)} fill="var(--overlay-ns)" opacity="0.8" />
-        <path d={circlesPath(down, 2.1)} fill="var(--overlay-down)" />
-        <path d={circlesPath(up, 2.1)} fill="var(--overlay-up)" />
-      </svg>
+      {chart}
+
+      <ChartTooltip
+        anchorRef={ref}
+        hover={hover}
+        title={hover?.point?.r?.symbol}
+        rows={tipRows}
+      />
 
       <div style={{ display: 'flex', gap: 10, marginTop: 5 }}>
         <span className="t-num" style={{ fontWeight: 600, fontSize: 9.5, color: 'var(--de-up)' }}>

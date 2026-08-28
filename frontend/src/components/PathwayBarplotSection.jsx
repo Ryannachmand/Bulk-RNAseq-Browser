@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getProjectPathwayResults, renderProjectRPathwayBarplot, runPathwayAnalysis } from '../api/client'
 import PanelFrame from './PanelFrame'
-import { ErrorMsg, ROutput, SegToggle } from './ui'
+import { ChartTooltip, useTargetHover } from './ChartHover'
+import { ErrorMsg, ROutput, SegToggle, fmtExp } from './ui'
 
 const VIEW = [
   { value: 'interactive', label: 'Interactive' },
@@ -17,7 +18,7 @@ function isUp(row) {
 }
 
 /** One diverging bar row. A real button so it is tabbable and Enter/Space works. */
-function PathwayRow({ row, value, max, selected, anySelected, directionAvailable, onClick }) {
+function PathwayRow({ row, index, value, max, selected, anySelected, directionAvailable, expanded, onClick }) {
   const up = !directionAvailable || isUp(row)
   const frac = max > 0 ? Math.min(1, Math.abs(value) / max) : 0
   const len = Math.max(2, frac * BAR_MAX)
@@ -31,7 +32,11 @@ function PathwayRow({ row, value, max, selected, anySelected, directionAvailable
       type="button"
       className="pw-row"
       aria-pressed={selected}
-      title={`${row.Description} · p.adjust ${Number(row['p.adjust']).toExponential(2)} · ${row.Count} genes`}
+      data-hover={index}
+      // Native title in the compact grid only — expanded, the hover tooltip
+      // carries the same fields and the two must not stack.
+      title={expanded ? undefined
+        : `${row.Description} · p.adjust ${Number(row['p.adjust']).toExponential(2)} · ${row.Count} genes`}
       onClick={onClick}
     >
       <span style={{
@@ -166,6 +171,30 @@ export default function PathwayBarplotSection({
     [ordered, directionAvailable]
   )
 
+  // ── Expanded-mode hover ───────────────────────────────────────────────
+  // This component renders the PanelFrame rather than living inside it, so it
+  // reads the expansion state from the prop it already holds instead of from
+  // the panel context.
+  const expanded = expandedPanel === 'pathways'
+
+  const resolveRow = useCallback(key => ordered[Number(key)] ?? null, [ordered])
+
+  const { ref, hover, handlers } = useTargetHover({
+    enabled: expanded,
+    selector: '.pw-row',
+    resolve: resolveRow,
+  })
+
+  const tipRows = useMemo(() => {
+    const r = hover?.point
+    if (!r) return []
+    return [
+      directionAvailable ? ['Direction', isUp(r) ? 'up' : 'down', false] : null,
+      ['Genes', `n=${r.Count}`],
+      ['p.adjust', fmtExp(r['p.adjust'], 2)],
+    ]
+  }, [hover, directionAvailable])
+
   const headerRight = (
     <SegToggle ariaLabel="Pathway view" options={VIEW} value={view} onChange={setView} />
   )
@@ -279,19 +308,27 @@ export default function PathwayBarplotSection({
               </p>
             )}
 
-            <div role="group" aria-label="Enriched pathways">
+            <div role="group" aria-label="Enriched pathways" ref={ref} {...handlers}>
               {ordered.map((r, i) => (
                 <PathwayRow
                   key={r.Description + i}
                   row={r}
+                  index={i}
                   value={valueOf(r)}
                   max={max}
                   directionAvailable={directionAvailable}
+                  expanded={expanded}
                   selected={selection?.id === r.Description}
                   anySelected={!!selection}
                   onClick={() => onSelectPathway(selection?.id === r.Description ? null : r)}
                 />
               ))}
+              <ChartTooltip
+                anchorRef={ref}
+                hover={hover}
+                title={hover?.point?.Description}
+                rows={tipRows}
+              />
             </div>
 
             <p className="t-note" style={{ margin: '9px 0 0' }}>
