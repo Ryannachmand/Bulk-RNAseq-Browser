@@ -1,34 +1,54 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getProjectHeatmapData } from '../api/client'
+import PanelFrame from './PanelFrame'
 import HeatmapPlot from './HeatmapPlot'
 import RHeatmapPanel from './RHeatmapPanel'
+import { ChipWell, ErrorMsg, MissingStrip, SegToggle, groupColorMap, parseSymbols } from './ui'
 
-const TAB_INTERACTIVE = 'interactive'
-const TAB_R = 'r'
+const VIEW = [
+  { value: 'interactive', label: 'Interactive' },
+  { value: 'r', label: 'R-exact' },
+]
 
-export default function HeatmapSection({ projectId, projectName }) {
-  const [tab, setTab] = useState(TAB_INTERACTIVE)
+const SOURCES = [
+  { value: 'top', label: 'Top variable' },
+  { value: 'list', label: 'My gene list' },
+  { value: 'linked', label: 'Linked pathway' },
+]
 
+export default function HeatmapSection({
+  projectId, projectName,
+  selection, selectionSet,
+  expandedPanel, onToggleExpand,
+}) {
+  const [view, setView] = useState('interactive')
+  const [source, setSource] = useState('top')
   const [nGenes, setNGenes] = useState(40)
-  const [customGenesText, setCustomGenesText] = useState('')
+  const [symbols, setSymbols] = useState([])
+  const [draft, setDraft] = useState('')
   const [clusterRows, setClusterRows] = useState(false)
 
   const [heatmapData, setHeatmapData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  async function fetchHeatmap() {
+  const fileRef = useRef(null)
+
+  // The gene list actually sent for the current source.
+  function listFor(src) {
+    if (src === 'list') return symbols
+    if (src === 'linked') return selection?.genes ?? []
+    return null
+  }
+
+  async function fetchHeatmap(src = source, list = listFor(src), cluster = clusterRows, n = nGenes) {
     setLoading(true)
     setError(null)
     try {
-      const geneList = customGenesText
-        .split(/[\n,]+/)
-        .map(s => s.trim())
-        .filter(Boolean)
       const data = await getProjectHeatmapData(projectId, {
-        nGenes,
-        geneList: geneList.length > 0 ? geneList : null,
-        clusterRows,
+        nGenes: n,
+        geneList: list && list.length > 0 ? list : null,
+        clusterRows: cluster,
       })
       setHeatmapData(data)
     } catch (e) {
@@ -38,130 +58,191 @@ export default function HeatmapSection({ projectId, projectName }) {
     }
   }
 
-  useEffect(() => { fetchHeatmap() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchHeatmap('top', null, false, 40) }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tabStyle = (active) => ({
-    padding: '0.35rem 1rem',
-    border: '1px solid #ccc',
-    borderBottom: active ? '1px solid #fff' : '1px solid #ccc',
-    background: active ? '#fff' : '#f5f5f5',
-    cursor: 'pointer',
-    fontWeight: active ? 600 : 400,
-    fontSize: '0.9em',
-    marginBottom: -1,
-    position: 'relative',
-  })
+  function switchSource(next) {
+    setSource(next)
+    const list = next === 'list' ? symbols : next === 'linked' ? (selection?.genes ?? []) : null
+    if (next === 'linked' && (!list || list.length === 0)) return  // nothing to show yet
+    if (next === 'list' && (!list || list.length === 0)) return
+    fetchHeatmap(next, list)
+  }
+
+  function applyList(next) {
+    setSymbols(next)
+    if (source === 'list' && next.length > 0) fetchHeatmap('list', next)
+  }
+
+  function handleAddGenes() {
+    const parsed = parseSymbols(draft)
+    const next = parsed.length ? [...new Set([...symbols, ...parsed])] : symbols
+    setDraft('')
+    setSymbols(next)
+    setSource('list')
+    if (next.length > 0) fetchHeatmap('list', next)
+  }
+
+  function handleUpload(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const next = [...new Set([...symbols, ...parseSymbols(String(reader.result))])]
+      setSymbols(next)
+      setSource('list')
+      if (next.length > 0) fetchHeatmap('list', next)
+    }
+    reader.readAsText(file)
+  }
+
+  function handleFromSelection() {
+    if (!selection) return
+    const next = [...new Set([...symbols, ...selection.genes])]
+    setSymbols(next)
+    setSource('list')
+    fetchHeatmap('list', next)
+  }
+
+  function toggleCluster(e) {
+    const next = e.target.checked
+    setClusterRows(next)
+    fetchHeatmap(source, listFor(source), next)
+  }
+
+  // Symbols the matrix did not have — the API returns only the genes it found.
+  const missing = useMemo(() => {
+    if (source !== 'list' || !heatmapData) return []
+    const found = new Set(heatmapData.genes)
+    return symbols.filter(s => !found.has(s))
+  }, [source, symbols, heatmapData])
+
+  const groupColors = useMemo(() => {
+    const order = heatmapData?.grouping?.group_order || []
+    return groupColorMap(order, null)
+  }, [heatmapData])
+
+  const setNote =
+    source === 'top' ? `top ${nGenes} by variance`
+    : source === 'list'
+      ? (symbols.length ? `${symbols.length} genes from your list · order preserved` : 'no genes in your list yet')
+      : selection
+        ? `genes in ${selection.label}`
+        : 'no pathway selected — showing top variable'
+
+  const headerRight = (
+    <>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <input type="checkbox" checked={clusterRows} onChange={toggleCluster} />
+        <span className="t-util">Cluster rows</span>
+      </label>
+      <SegToggle ariaLabel="Heatmap view" options={VIEW} value={view} onChange={setView} />
+    </>
+  )
 
   return (
-    <div>
+    <PanelFrame
+      id="heatmap"
+      title="Heatmap"
+      kicker="z-score fill · FPKM label"
+      headerRight={headerRight}
+      expandedPanel={expandedPanel}
+      onToggleExpand={onToggleExpand}
+      bodyStyle={{ padding: 0 }}
+    >
+      {/* shared gene-set sub-bar — governs the R render too */}
       <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '1rem',
-        alignItems: 'flex-end',
-        padding: '0.75rem',
-        background: '#fafafa',
-        border: '1px solid #e0e0e0',
-        borderRadius: 4,
-        marginBottom: '1rem',
+        background: 'var(--ground-alt)',
+        borderBottom: '1.5px solid var(--rule-mid)',
+        padding: '10px 14px 11px',
+        display: 'flex', flexDirection: 'column', gap: 9,
       }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span style={{ fontSize: '0.85em' }}>Top N genes (by variance)</span>
-          <input
-            type="number"
-            value={nGenes}
-            min={1}
-            max={500}
-            step={5}
-            onChange={e => setNGenes(Number(e.target.value))}
-            style={{ width: 80 }}
-            disabled={customGenesText.trim().length > 0}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span className="t-util t-util-field" id="hm-set-label">Gene set</span>
+          <SegToggle
+            ariaLabel="Heatmap gene set source"
+            options={SOURCES.map(s => ({
+              ...s,
+              disabled: s.value === 'linked' && !selection,
+              title: s.value === 'linked' && !selection ? 'Select a pathway first' : undefined,
+            }))}
+            value={source}
+            onChange={switchSource}
           />
-        </label>
+          {source === 'top' && (
+            <>
+              <label className="t-util t-util-field" htmlFor="hm-n">N</label>
+              <input id="hm-n" type="number" className="fld" style={{ width: 64 }}
+                     min={1} max={500} step={5} value={nGenes}
+                     onChange={e => setNGenes(Number(e.target.value))} />
+              <button type="button" className="btn btn-outline"
+                      onClick={() => fetchHeatmap('top', null, clusterRows, nGenes)}>
+                Apply
+              </button>
+            </>
+          )}
+          <span className="t-note" style={{ marginLeft: 'auto' }}>{setNote}</span>
+        </div>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span style={{ fontSize: '0.85em' }}>
-            Custom gene list (comma or newline)
-            <span style={{ color: '#888', fontWeight: 400 }}> — overrides N</span>
-          </span>
-          <textarea
-            value={customGenesText}
-            onChange={e => setCustomGenesText(e.target.value)}
-            rows={2}
-            style={{ width: 280, fontFamily: 'monospace', fontSize: '0.85em', resize: 'vertical' }}
-            placeholder="GAPDH, ACTB, MYC"
-          />
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9em' }}>
-          <input
-            type="checkbox"
-            checked={clusterRows}
-            onChange={e => setClusterRows(e.target.checked)}
-          />
-          Cluster rows
-        </label>
-
-        <button
-          onClick={fetchHeatmap}
-          disabled={loading}
-          style={{
-            padding: '0.4rem 0.9rem',
-            background: loading ? '#aaa' : '#374151',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            cursor: loading ? 'default' : 'pointer',
-            fontSize: '0.9em',
-            alignSelf: 'flex-end',
-          }}
-        >
-          {loading ? 'Loading…' : 'Update'}
-        </button>
-
-        {heatmapData && (
-          <span style={{ fontSize: '0.8em', color: '#777', alignSelf: 'flex-end' }}>
-            {heatmapData.samples.length} samples
-          </span>
-        )}
-      </div>
-
-      {error && (
-        <p style={{ color: '#cc2222', fontSize: '0.9em', margin: '0 0 0.75rem' }}>
-          <strong>Error:</strong> {error}
-        </p>
-      )}
-
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
-        <button style={tabStyle(tab === TAB_INTERACTIVE)} onClick={() => setTab(TAB_INTERACTIVE)}>
-          Interactive (Plotly)
-        </button>
-        <button style={tabStyle(tab === TAB_R)} onClick={() => setTab(TAB_R)}>
-          R-exact (pheatmap)
-        </button>
-      </div>
-
-      <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1rem', background: '#fff' }}>
-        {tab === TAB_INTERACTIVE && (
+        {source === 'list' && (
           <>
-            {loading && !heatmapData && (
-              <p style={{ color: '#555' }}>Loading heatmap data…</p>
-            )}
-            {heatmapData && (
-              <HeatmapPlot data={heatmapData} />
-            )}
+            <ChipWell
+              inputId="hm-symbols"
+              ariaLabel="Heatmap gene list"
+              symbols={symbols}
+              missing={new Set(missing)}
+              draft={draft}
+              onDraft={setDraft}
+              onRemove={s => applyList(symbols.filter(g => g !== s))}
+              onCommit={added => applyList([...new Set([...symbols, ...added])])}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-primary" onClick={handleAddGenes}>
+                Add genes
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => fileRef.current?.click()}>
+                Upload .txt / .csv
+              </button>
+              <input ref={fileRef} type="file" accept=".txt,.csv,.tsv,text/plain"
+                     style={{ display: 'none' }} onChange={handleUpload} />
+              <button type="button" className="btn btn-outline"
+                      onClick={handleFromSelection} disabled={!selection}>
+                From linked selection
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => applyList([])}>
+                Clear
+              </button>
+              <span className="t-note t-num" style={{ marginLeft: 'auto' }}>
+                {symbols.length} in list
+              </span>
+            </div>
+            <MissingStrip missing={missing} noun="not in matrix" />
           </>
         )}
+      </div>
 
-        {tab === TAB_R && (
+      <div style={{ padding: '11px 14px 13px' }}>
+        {loading && <p className="msg-wait">Loading heatmap data…</p>}
+        <ErrorMsg>{error}</ErrorMsg>
+
+        {view === 'interactive' && heatmapData && (
+          <HeatmapPlot
+            data={heatmapData}
+            selectionSet={selectionSet}
+            groupColors={groupColors}
+          />
+        )}
+
+        {view === 'r' && (
           <RHeatmapPanel
             projectId={projectId}
             genes={heatmapData?.genes ?? null}
             clusterRows={clusterRows}
             defaultTitle={projectName}
+            setNote={setNote}
           />
         )}
       </div>
-    </div>
+    </PanelFrame>
   )
 }

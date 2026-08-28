@@ -49,13 +49,18 @@ export function ChipWell({
   tall = false,
   inputId,
   ariaLabel = 'Gene symbol list',
+  draft,          // optional controlled draft text
+  onDraft,
 }) {
+  const controlled = draft !== undefined
+
   function handleKeyDown(e) {
     if (e.key !== 'Enter') return
     e.preventDefault()
     const parsed = parseSymbols(e.currentTarget.value)
     if (parsed.length) onCommit(parsed)
-    e.currentTarget.value = ''
+    if (controlled) onDraft('')
+    else e.currentTarget.value = ''
   }
   function handlePaste(e) {
     const text = e.clipboardData?.getData('text')
@@ -63,6 +68,7 @@ export function ChipWell({
     e.preventDefault()
     const parsed = parseSymbols(text)
     if (parsed.length) onCommit(parsed)
+    if (controlled) onDraft('')
   }
   return (
     <div className={'chip-well' + (tall ? ' chip-well-tall' : '')}>
@@ -80,6 +86,7 @@ export function ChipWell({
         placeholder={placeholder}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
+        {...(controlled ? { value: draft, onChange: e => onDraft(e.target.value) } : {})}
       />
     </div>
   )
