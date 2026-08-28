@@ -1,114 +1,100 @@
-import { useState } from 'react'
-import Plot from 'react-plotly.js'
+import { useMemo } from 'react'
+import { groupColorMap } from './ui'
 
-const CONDITION_COLORS = [
-  '#4e79a7', '#f28e2b', '#e15759', '#76b7b2',
-  '#59a14f', '#edc948', '#b07aa1', '#ff9da7',
-  '#9c755f', '#bab0ac',
-]
+/**
+ * PCA scatter at the design geometry: viewBox 0 0 442 268, plot rect
+ * x34 y10 w398 h216, centre guides at x=233 / y=118, r=6 points with a 1.5px
+ * ground-coloured stroke, sample labels offset +9x / -7y.
+ *
+ * Coordinates and variance-explained percentages come from the API. The axis
+ * titles are built from the block actually being shown, so switching to the
+ * batch-corrected block changes the percentages with it.
+ */
 
-function buildTraces(block, rawBlock, pcX, pcY) {
-  const samples  = rawBlock.samples || []
-  const xVals    = block[pcX] || []
-  const yVals    = block[pcY] || []
-  const meta     = rawBlock.sample_meta || {}
+const PLOT = { x: 34, y: 10, w: 398, h: 216 }
+const PAD = { l: 16, r: 26, t: 16, b: 16 }
 
-  const conditionMap = {}
-  samples.forEach((s, i) => {
-    const cond = meta[s]?.condition ?? s
-    if (!conditionMap[cond]) conditionMap[cond] = { x: [], y: [], text: [] }
-    conditionMap[cond].x.push(xVals[i])
-    conditionMap[cond].y.push(yVals[i])
-    conditionMap[cond].text.push(s)
-  })
+export default function PCAPlot({ block, rawBlock, pcX, pcY, varExplained }) {
+  const samples = rawBlock.samples || []
+  const meta = rawBlock.sample_meta || {}
 
-  return Object.entries(conditionMap).map(([cond, pts], idx) => ({
-    type: 'scatter',
-    mode: 'markers',
-    name: cond,
-    x: pts.x,
-    y: pts.y,
-    text: pts.text,
-    hovertemplate: '<b>%{text}</b><br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>',
-    marker: {
-      color: CONDITION_COLORS[idx % CONDITION_COLORS.length],
-      size: 9,
-      opacity: 0.85,
-      line: { width: 0.5, color: '#fff' },
-    },
-  }))
-}
+  const conditions = useMemo(() => {
+    const out = []
+    for (const s of samples) {
+      const c = meta[s]?.condition ?? s
+      if (!out.includes(c)) out.push(c)
+    }
+    return out
+  }, [samples, meta])
 
-export default function PCAPlot({ pcaData }) {
-  const [pcPair, setPcPair] = useState('PC1_PC2')
-  const [useCorrected, setUseCorrected] = useState(false)
+  const colorFor = useMemo(() => groupColorMap(conditions, null), [conditions])
 
-  const hasCorrected = !!pcaData.corrected
+  const pts = useMemo(() => {
+    const xs = block[pcX] || []
+    const ys = block[pcY] || []
+    const xMin = Math.min(...xs), xMax = Math.max(...xs)
+    const yMin = Math.min(...ys), yMax = Math.max(...ys)
+    const xSpan = (xMax - xMin) || 1
+    const ySpan = (yMax - yMin) || 1
+    const px0 = PLOT.x + PAD.l, px1 = PLOT.x + PLOT.w - PAD.r
+    const py0 = PLOT.y + PAD.t, py1 = PLOT.y + PLOT.h - PAD.b
+    return samples.map((s, i) => ({
+      s,
+      cond: meta[s]?.condition ?? s,
+      cx: px0 + ((xs[i] - xMin) / xSpan) * (px1 - px0),
+      cy: py1 - ((ys[i] - yMin) / ySpan) * (py1 - py0),
+    }))
+  }, [block, pcX, pcY, samples, meta])
 
-  const pcX = 'PC1'
-  const pcY = pcPair === 'PC1_PC2' ? 'PC2' : 'PC3'
-
-  const block   = useCorrected && hasCorrected ? pcaData.corrected : pcaData.raw
-  const rawBlock = pcaData.raw
-
-  const varExp = block.var_explained || []
-  const pcIdx  = { PC1: 0, PC2: 1, PC3: 2 }
-  const xLabel = `${pcX}: ${(varExp[pcIdx[pcX]] ?? 0).toFixed(1)}% variance`
-  const yLabel = `${pcY}: ${(varExp[pcIdx[pcY]] ?? 0).toFixed(1)}% variance`
-
-  const traces = buildTraces(block, rawBlock, pcX, pcY)
+  const xTitle = `${pcX}: ${(varExplained[pcX] ?? 0).toFixed(1)}% variance`
+  const yTitle = `${pcY}: ${(varExplained[pcY] ?? 0).toFixed(1)}% variance`
 
   return (
     <div>
-      {/* Controls */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9em' }}>
-          PC pair:
-          <select
-            value={pcPair}
-            onChange={e => setPcPair(e.target.value)}
-            style={{ marginLeft: 4, fontSize: '0.9em' }}
-          >
-            <option value="PC1_PC2">PC1 vs PC2</option>
-            <option value="PC1_PC3">PC1 vs PC3</option>
-          </select>
-        </label>
+      <svg viewBox="0 0 442 268" width="100%" role="img"
+           aria-label={`PCA scatter, ${xTitle} against ${yTitle}`} style={{ display: 'block' }}>
+        <rect x={PLOT.x} y={PLOT.y} width={PLOT.w} height={PLOT.h}
+              fill="var(--surface-plot)" stroke="var(--rule-soft)" strokeWidth="1" />
 
-        {hasCorrected && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9em' }}>
-            <input
-              type="checkbox"
-              checked={useCorrected}
-              onChange={e => setUseCorrected(e.target.checked)}
-            />
-            Batch-corrected
-          </label>
-        )}
-      </div>
+        <line x1="233" y1={PLOT.y} x2="233" y2={PLOT.y + PLOT.h}
+              stroke="var(--rule-faint)" strokeWidth="1" />
+        <line x1={PLOT.x} y1="118" x2={PLOT.x + PLOT.w} y2="118"
+              stroke="var(--rule-faint)" strokeWidth="1" />
 
-      <p style={{ fontSize: '0.8em', color: '#6b7280', fontStyle: 'italic', margin: '0 0 0.5rem' }}>
-        PCA computed from FPKM (log2-transformed), not VST — exact VST-based PCA requires raw counts,
-        available in a future update.
-      </p>
+        {pts.map(p => (
+          <circle key={p.s} cx={p.cx} cy={p.cy} r="6"
+                  fill={colorFor[p.cond]} stroke="#f3f2f2" strokeWidth="1.5">
+            <title>{`${p.s} · ${p.cond}`}</title>
+          </circle>
+        ))}
 
-      <Plot
-        data={traces}
-        layout={{
-          xaxis: { title: { text: xLabel }, zeroline: false },
-          yaxis: { title: { text: yLabel }, zeroline: false },
-          legend: { title: { text: 'Condition' } },
-          margin: { t: 20, r: 180, b: 60, l: 70 },
-          hovermode: 'closest',
-          plot_bgcolor: '#fff',
-          paper_bgcolor: '#fff',
-        }}
-        style={{ width: '100%', height: 460 }}
-        config={{ displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d'] }}
-        useResizeHandler
-      />
+        {pts.map(p => (
+          <text key={'l' + p.s} x={p.cx + 9} y={p.cy - 7}
+                fontSize="10" fontWeight="600" fill="var(--ink-600)">
+            {p.s}
+          </text>
+        ))}
 
-      <div style={{ fontSize: '0.8em', color: '#6b7280', marginTop: '0.25rem' }}>
-        Computed from top {pcaData.n_genes_used} most-variable genes.
+        <text x="233" y="252" textAnchor="middle"
+              fontSize="10" fontWeight="600" letterSpacing="1" fill="var(--ink-600)">
+          {xTitle}
+        </text>
+        <text x="12" y="118" textAnchor="middle" transform="rotate(-90 12 118)"
+              fontSize="10" fontWeight="600" letterSpacing="1" fill="var(--ink-600)">
+          {yTitle}
+        </text>
+      </svg>
+
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+        marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--rule-hair)',
+      }}>
+        {conditions.map(c => (
+          <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span aria-hidden="true" style={{ width: 9, height: 9, background: colorFor[c] }} />
+            <span className="t-util">{c}</span>
+          </span>
+        ))}
       </div>
     </div>
   )
