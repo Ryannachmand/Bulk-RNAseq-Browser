@@ -1,0 +1,4 @@
+form complete, backend down  : BACKEND UNREACHABLE — RETRYING EVERY 3 S | create disabled = true
+after the backend returns    : BACKEND CONNECTED | create disabled = false
+
+PASS — recovered with no reload: status flipped and the submit gate reopened

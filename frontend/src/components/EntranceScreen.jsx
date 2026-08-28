@@ -89,7 +89,7 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
 
   const statusText = connected === null
     ? 'Checking backend…'
-    : connected ? 'Backend connected' : 'Backend unreachable'
+    : connected ? 'Backend connected' : 'Backend unreachable — retrying every 3 s'
 
   return (
     <div style={{

@@ -18,6 +18,8 @@ import PathwayBarplotSection from './components/PathwayBarplotSection'
 
 const SCREEN = { ENTRANCE: 'entrance', DASHBOARD: 'dashboard' }
 
+const HEALTH_RETRY_MS = 3000
+
 // Retained from the tabbed build. The dashboard shows every panel at once, so
 // nothing renders from this any more, but the value is still computed so the
 // capability flags keep a single meaning across the app.
@@ -59,11 +61,38 @@ export default function App() {
 
   const contrastRef = useRef(null)
 
-  useEffect(() => {
+  // The backend is not a fixed feature of the session: uvicorn gets restarted,
+  // and over VS Code's SSH port forwarding the tunnel itself can drop and come
+  // back. One probe at mount used to latch `connected` to false for the life of
+  // the page — leaving Create project disabled while the backend answered
+  // normally — so the probe is retried instead.
+  const probeHealth = useCallback(() => {
     checkHealth()
       .then(() => setConnected(true))
       .catch(() => setConnected(false))
+  }, [])
 
+  // Probe at mount, and again whenever the tab comes back to the front — the
+  // usual moment a restored tunnel or a restarted backend is first noticed.
+  useEffect(() => {
+    probeHealth()
+    const onWake = () => { if (document.visibilityState === 'visible') probeHealth() }
+    window.addEventListener('focus', onWake)
+    document.addEventListener('visibilitychange', onWake)
+    return () => {
+      window.removeEventListener('focus', onWake)
+      document.removeEventListener('visibilitychange', onWake)
+    }
+  }, [probeHealth])
+
+  // Only an unreachable backend is polled; a healthy session makes no traffic.
+  useEffect(() => {
+    if (connected !== false) return
+    const id = setInterval(probeHealth, HEALTH_RETRY_MS)
+    return () => clearInterval(id)
+  }, [connected, probeHealth])
+
+  useEffect(() => {
     // Restore from URL on load/refresh
     const match = window.location.pathname.match(/^\/project\/([^/]+)\/dashboard$/)
     if (match) {

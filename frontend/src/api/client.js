@@ -188,10 +188,19 @@ export async function renderProjectRPathwayBarplot(projectId, { topN = 20, plotT
   return URL.createObjectURL(blob)
 }
 
-export async function checkHealth() {
-  const res = await fetch(`${BASE}/health`)
-  if (!res.ok) throw new Error('unreachable')
-  return res.json()
+// A dropped SSH tunnel leaves a socket that accepts and then never answers, so
+// this probe carries its own deadline — without one the caller's retry loop
+// stacks up requests that will never settle.
+export async function checkHealth(timeoutMs = 4000) {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${BASE}/health`, { signal: ctl.signal })
+    if (!res.ok) throw new Error('unreachable')
+    return await res.json()
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function getConditionLevels(projectId) {
