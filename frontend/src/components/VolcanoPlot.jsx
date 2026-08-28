@@ -1,118 +1,243 @@
 import { useMemo } from 'react'
-import Plot from 'react-plotly.js'
 
-const UP_COLOR   = '#E41A1C'
-const DOWN_COLOR = '#4878CF'
-const NS_COLOR   = '#B3B3B3'
-const LINE_COLOR = '#999999'
+/**
+ * Volcano, drawn as a plain SVG at the design geometry.
+ *
+ *   viewBox 0 0 700 330 · plot rect x52 y16 w638 h270
+ *   cx = 371 + clamp(lfc, -xMax, xMax) * (319 / xMax)
+ *   cy = 286 - min(nlogp, yMax) * (270 / yMax)
+ *
+ * xMax defaults to 6 and yMax to 28, which reproduce the design's 53.17 and
+ * 9.64 exactly. Both extend when the data run past them, so a project whose
+ * top hits sit at -log10(padj) ~ 300 is not flattened onto the frame edge.
+ *
+ * Every text node in here is a real SVG <text> with a plain text child. An
+ * HTML element inside the SVG namespace has no rendered geometry and paints
+ * nothing while still sitting in the DOM with the right x/y/fill.
+ */
 
-export default function VolcanoPlot({ rows, padjCutoff, lfcCutoff, onPadjChange, onLfcChange }) {
-  const fpkmCols = useMemo(() => {
-    if (!rows.length) return []
-    return Object.keys(rows[0]).filter(k => k.toUpperCase().startsWith('FPKM_'))
-  }, [rows])
+const PLOT = { x: 52, y: 16, w: 638, h: 270, cx: 371, cy0: 286 }
+const LABEL_STEP = 13
+const FLOOR_Y = 282
 
-  const { x, y, colors, texts } = useMemo(() => {
-    const x = [], y = [], colors = [], texts = []
+function niceTicks(max, count) {
+  const raw = max / count
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)))
+  const norm = raw / mag
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag
+  const out = []
+  for (let v = 0; v <= max + 1e-9; v += step) out.push(Number(v.toFixed(6)))
+  return out
+}
+
+function circlesPath(pts, r) {
+  let d = ''
+  for (const [x, y] of pts) {
+    d += `M${(x - r).toFixed(1)},${y.toFixed(1)}a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0`
+  }
+  return d
+}
+
+// Push labels apart within an anchor group so they stay legible.
+function deCollide(items) {
+  const out = []
+  for (const side of ['start', 'end']) {
+    const group = items.filter(i => i.anchor === side).sort((a, b) => a.y - b.y)
+    let prev = -Infinity
+    for (const it of group) {
+      let y = it.y
+      if (y - prev < LABEL_STEP) y = prev + LABEL_STEP
+      y = Math.min(y, FLOOR_Y)
+      prev = y
+      out.push({ ...it, y })
+    }
+  }
+  return out
+}
+
+export default function VolcanoPlot({
+  rows, padjCutoff, lfcCutoff, labelSymbols, selectionSet,
+}) {
+  const model = useMemo(() => {
+    const pts = []
+    let maxAbsLfc = 0
+    let maxNlog = 0
     for (const r of rows) {
-      const lfc  = r.log2FoldChange
+      const lfc = r.log2FoldChange
       const padj = r.padj
       if (lfc == null || padj == null || !isFinite(lfc) || !isFinite(padj)) continue
-
-      // Cap -log10(padj) at 300 to avoid Inf from padj=0
-      const negLogP = padj > 0 ? Math.min(-Math.log10(padj), 300) : 300
-
-      x.push(lfc)
-      y.push(negLogP)
-
-      let fpkmLine = ''
-      if (fpkmCols.length > 0) {
-        const best = fpkmCols.reduce((a, b) =>
-          (r[a] ?? -Infinity) >= (r[b] ?? -Infinity) ? a : b
-        )
-        if (r[best] != null) {
-          fpkmLine = `<br>${best}: ${Number(r[best]).toFixed(2)}`
-        }
-      }
-
-      const label = r.symbol && !r.symbol.startsWith('ENSG') ? r.symbol : r.gene
-      texts.push(
-        `<b>${label}</b><br>log2FC: ${lfc.toFixed(3)}<br>padj: ${padj.toExponential(2)}${fpkmLine}`
-      )
-
+      const nlog = padj > 0 ? Math.min(-Math.log10(padj), 300) : 300
+      const symbol = r.symbol && !String(r.symbol).startsWith('ENSG') ? r.symbol : r.gene
       const sig = padj < padjCutoff && Math.abs(lfc) > lfcCutoff
-      colors.push(!sig ? NS_COLOR : lfc > 0 ? UP_COLOR : DOWN_COLOR)
+      pts.push({ lfc, padj, nlog, symbol, sig, up: lfc > 0 })
+      if (Math.abs(lfc) > maxAbsLfc) maxAbsLfc = Math.abs(lfc)
+      if (nlog > maxNlog) maxNlog = nlog
     }
-    return { x, y, colors, texts }
+    const xMax = Math.max(6, Math.ceil(maxAbsLfc))
+    const yMax = Math.max(28, Math.ceil(maxNlog))
+    const sx = 319 / xMax
+    const sy = 270 / yMax
+    const toX = v => PLOT.cx + Math.max(-xMax, Math.min(xMax, v)) * sx
+    const toY = v => PLOT.cy0 - Math.min(v, yMax) * sy
+    return { pts, xMax, yMax, toX, toY }
   }, [rows, padjCutoff, lfcCutoff])
 
-  const threshold = -Math.log10(padjCutoff)
+  const { pts, xMax, yMax, toX, toY } = model
 
-  const shapes = [
-    {
-      type: 'line', xref: 'paper', x0: 0, x1: 1,
-      yref: 'y', y0: threshold, y1: threshold,
-      line: { color: LINE_COLOR, width: 1, dash: 'dash' },
-    },
-    {
-      type: 'line', xref: 'x', x0: lfcCutoff, x1: lfcCutoff,
-      yref: 'paper', y0: 0, y1: 1,
-      line: { color: LINE_COLOR, width: 1, dash: 'dash' },
-    },
-    {
-      type: 'line', xref: 'x', x0: -lfcCutoff, x1: -lfcCutoff,
-      yref: 'paper', y0: 0, y1: 1,
-      line: { color: LINE_COLOR, width: 1, dash: 'dash' },
-    },
-  ]
+  const groups = useMemo(() => {
+    const ns = [], up = [], down = [], dimmed = [], inSel = []
+    for (const p of pts) {
+      const xy = [toX(p.lfc), toY(p.nlog)]
+      if (selectionSet) {
+        if (selectionSet.has(p.symbol)) inSel.push({ ...p, xy })
+        else dimmed.push(xy)
+        continue
+      }
+      if (!p.sig) ns.push(xy)
+      else if (p.up) up.push({ ...p, xy })
+      else down.push({ ...p, xy })
+    }
+    return { ns, up, down, dimmed, inSel }
+  }, [pts, toX, toY, selectionSet])
+
+  const counts = useMemo(() => {
+    let up = 0, down = 0, ns = 0
+    for (const p of pts) { if (!p.sig) ns++; else if (p.up) up++; else down++ }
+    return { up, down, ns }
+  }, [pts])
+
+  const labels = useMemo(() => {
+    if (!labelSymbols || labelSymbols.size === 0) return []
+    const seen = new Set()
+    const items = []
+    for (const p of pts) {
+      if (!labelSymbols.has(p.symbol) || seen.has(p.symbol)) continue
+      seen.add(p.symbol)
+      const x = toX(p.lfc)
+      items.push({
+        key: p.symbol,
+        text: p.symbol,
+        anchor: p.lfc >= 0 ? 'start' : 'end',
+        x: p.lfc >= 0 ? x + 5 : x - 5,
+        y: toY(p.nlog) - 4,
+      })
+    }
+    return deCollide(items)
+  }, [pts, labelSymbols, toX, toY])
+
+  const xTicks = useMemo(() => {
+    const half = niceTicks(xMax, 3)
+    return [...half.slice(1).map(v => -v).reverse(), ...half]
+  }, [xMax])
+  const yTicks = useMemo(() => niceTicks(yMax, 5), [yMax])
+
+  const guideY = toY(-Math.log10(padjCutoff))
+  const showGuideY = isFinite(guideY) && guideY > PLOT.y && guideY < PLOT.cy0
+
+  const hoverTitle = p =>
+    `${p.symbol}\nlog2FC: ${p.lfc.toFixed(3)}\npadj: ${p.padj.toExponential(2)}`
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: '2rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-        <label>
-          padj cutoff:{' '}
-          <input
-            type="number" value={padjCutoff} min={0} max={1} step={0.01}
-            style={{ width: 70 }}
-            onChange={e => onPadjChange(Number(e.target.value))}
-          />
-        </label>
-        <label>
-          |log2FC| cutoff:{' '}
-          <input
-            type="number" value={lfcCutoff} min={0} step={0.1}
-            style={{ width: 70 }}
-            onChange={e => onLfcChange(Number(e.target.value))}
-          />
-        </label>
-        <span style={{ color: '#555', fontSize: '0.9em' }}>
-          {colors.filter(c => c === UP_COLOR).length} up &nbsp;|&nbsp;
-          {colors.filter(c => c === DOWN_COLOR).length} down &nbsp;|&nbsp;
-          {colors.filter(c => c === NS_COLOR).length} NS
+      <svg viewBox="0 0 700 330" width="100%" role="img"
+           aria-label={`Volcano plot: ${counts.up} up, ${counts.down} down, ${counts.ns} not significant`}
+           style={{ display: 'block' }}>
+        <rect x={PLOT.x} y={PLOT.y} width={PLOT.w} height={PLOT.h}
+              fill="var(--surface-plot)" stroke="var(--rule-soft)" strokeWidth="1" />
+
+        {/* zero / centre guide */}
+        <line x1={PLOT.cx} y1={PLOT.y} x2={PLOT.cx} y2={PLOT.cy0}
+              stroke="var(--rule-faint)" strokeWidth="1" />
+
+        {/* threshold guides */}
+        <g stroke="var(--ink)" strokeWidth="1" strokeDasharray="5 4">
+          <line x1={toX(lfcCutoff)} y1={PLOT.y} x2={toX(lfcCutoff)} y2={PLOT.cy0} />
+          <line x1={toX(-lfcCutoff)} y1={PLOT.y} x2={toX(-lfcCutoff)} y2={PLOT.cy0} />
+          {showGuideY && <line x1={PLOT.x} y1={guideY} x2={PLOT.x + PLOT.w} y2={guideY} />}
+        </g>
+
+        {/* points */}
+        {selectionSet ? (
+          <>
+            <path d={circlesPath(groups.dimmed, 2.2)} fill="var(--de-dimmed)" opacity="0.16" />
+            {groups.inSel.map((p, i) => (
+              <circle key={p.symbol + i} cx={p.xy[0]} cy={p.xy[1]} r="4.2" opacity="1"
+                      fill={p.up ? 'var(--de-up)' : 'var(--de-down)'}>
+                <title>{hoverTitle(p)}</title>
+              </circle>
+            ))}
+          </>
+        ) : (
+          <>
+            <path d={circlesPath(groups.ns, 2.4)} fill="var(--de-ns)" opacity="0.75" />
+            {groups.down.map((p, i) => (
+              <circle key={'d' + i} cx={p.xy[0]} cy={p.xy[1]} r="3.1" opacity="0.9" fill="var(--de-down)">
+                <title>{hoverTitle(p)}</title>
+              </circle>
+            ))}
+            {groups.up.map((p, i) => (
+              <circle key={'u' + i} cx={p.xy[0]} cy={p.xy[1]} r="3.1" opacity="0.9" fill="var(--de-up)">
+                <title>{hoverTitle(p)}</title>
+              </circle>
+            ))}
+          </>
+        )}
+
+        {/* gene labels */}
+        {labels.map(l => (
+          <text key={l.key} x={l.x} y={l.y} textAnchor={l.anchor}
+                fontSize="10" fontWeight="700" fill="var(--ink)">
+            {l.text}
+          </text>
+        ))}
+
+        {/* ticks */}
+        {xTicks.map(v => (
+          <text key={'xt' + v} x={toX(v)} y={302} textAnchor="middle"
+                fontSize="10" fontWeight="500" fill="var(--ink-600)">
+            {String(v)}
+          </text>
+        ))}
+        {yTicks.map(v => (
+          <text key={'yt' + v} x={46} y={toY(v) + 3.5} textAnchor="end"
+                fontSize="10" fontWeight="500" fill="var(--ink-600)">
+            {String(v)}
+          </text>
+        ))}
+
+        {/* axis titles */}
+        <text x={PLOT.cx} y={322} textAnchor="middle"
+              fontSize="10" fontWeight="600" letterSpacing="1" fill="var(--ink-600)">
+          LOG2 FOLD CHANGE
+        </text>
+        <text x={14} y={151} textAnchor="middle" transform="rotate(-90 14 151)"
+              fontSize="10" fontWeight="600" letterSpacing="1" fill="var(--ink-600)">
+          −LOG10 PADJ
+        </text>
+      </svg>
+
+      {/* legend */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+        marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--rule-hair)',
+      }}>
+        {[
+          ['Up', counts.up, 'var(--de-up)'],
+          ['Down', counts.down, 'var(--de-down)'],
+          ['NS', counts.ns, 'var(--de-ns)'],
+        ].map(([label, n, color]) => (
+          <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span aria-hidden="true" style={{ width: 9, height: 9, background: color }} />
+            <span className="t-util">{label}</span>
+            <span className="t-num" style={{ fontWeight: 700, fontSize: 11.5 }}>{n}</span>
+          </span>
+        ))}
+        <span className="t-note" style={{ marginLeft: 'auto' }}>
+          {selectionSet
+            ? 'Points outside the linked gene set are dimmed.'
+            : `significant: padj < ${padjCutoff} and |log2FC| > ${lfcCutoff}`}
         </span>
       </div>
-
-      <Plot
-        data={[{
-          x, y,
-          mode: 'markers',
-          type: 'scattergl',
-          marker: { color: colors, size: 5, opacity: 0.7 },
-          text: texts,
-          hoverinfo: 'text',
-        }]}
-        layout={{
-          title: { text: 'Volcano Plot', font: { size: 16 } },
-          xaxis: { title: 'log₂ Fold Change', zeroline: false },
-          yaxis: { title: '-log₁₀(padj)', zeroline: false },
-          shapes,
-          width: 720,
-          height: 560,
-          margin: { t: 55, b: 55, l: 65, r: 20 },
-          hovermode: 'closest',
-        }}
-        config={{ responsive: true, displayModeBar: true }}
-      />
     </div>
   )
 }
