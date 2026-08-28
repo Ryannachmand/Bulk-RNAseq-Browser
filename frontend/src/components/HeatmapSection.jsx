@@ -60,6 +60,21 @@ export default function HeatmapSection({
 
   useEffect(() => { fetchHeatmap('top', null, false, 40) }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Selecting a pathway pulls the gene-set toggle over to LINKED PATHWAY.
+  // Keyed on the pathway identity so this fires on an actual change of
+  // selection only — a manual switch back to TOP VARIABLE or MY GENE LIST is
+  // not undone on the next render. `symbols` is left alone throughout, so the
+  // user's own list is still there when they switch back to it.
+  const seenSelection = useRef(null)
+  useEffect(() => {
+    const id = selection?.id ?? null
+    if (id === seenSelection.current) return
+    seenSelection.current = id
+    if (!id) return
+    setSource('linked')
+    fetchHeatmap('linked', selection.genes)
+  }, [selection])  // eslint-disable-line react-hooks/exhaustive-deps
+
   function switchSource(next) {
     setSource(next)
     const list = next === 'list' ? symbols : next === 'linked' ? (selection?.genes ?? []) : null
