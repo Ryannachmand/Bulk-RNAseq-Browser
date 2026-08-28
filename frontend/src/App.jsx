@@ -415,8 +415,6 @@ export default function App() {
                   hasDe={caps.has_de}
                   padjCutoff={padjCutoff}
                   lfcCutoff={lfcCutoff}
-                  selection={selection}
-                  selectionSet={selectionSet}
                 />
               ),
               {

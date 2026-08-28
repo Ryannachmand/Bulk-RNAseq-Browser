@@ -8,7 +8,7 @@ const VIEW = [
   { value: 'r', label: 'R-exact' },
 ]
 
-function CategoryCell({ cat, samples, grouping, groupColors, selectionSet }) {
+function CategoryCell({ cat, samples, grouping, groupColors }) {
   if (!cat.genes || cat.genes.length === 0) {
     return (
       <div style={{ background: 'var(--ground)', padding: '8px 9px 9px', minWidth: 0 }}>
@@ -44,7 +44,6 @@ function CategoryCell({ cat, samples, grouping, groupColors, selectionSet }) {
             fpkm_labels: cat.fpkm_labels,
             grouping,
           }}
-          selectionSet={selectionSet}
           groupColors={groupColors}
           labelWidth={72}
           cellHeight={14}
@@ -56,7 +55,7 @@ function CategoryCell({ cat, samples, grouping, groupColors, selectionSet }) {
   )
 }
 
-export default function CategoryHeatmapSection({ projectId, selectionSet }) {
+export default function CategoryHeatmapSection({ projectId }) {
   const [view, setView] = useState('interactive')
   const [nTopGenes, setNTopGenes] = useState(40)
 
@@ -141,7 +140,6 @@ export default function CategoryHeatmapSection({ projectId, selectionSet }) {
                     samples={heatmapData.samples}
                     grouping={heatmapData.grouping}
                     groupColors={groupColors}
-                    selectionSet={selectionSet}
                   />
                 ))}
               </div>

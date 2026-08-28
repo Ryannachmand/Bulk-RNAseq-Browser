@@ -25,11 +25,11 @@ function circlesPath(pts, r) {
   return d
 }
 
-function MiniVolcano({ cat, allGenes, scale, padjCutoff, lfcCutoff, selectionSet }) {
+function MiniVolcano({ cat, allGenes, scale, padjCutoff, lfcCutoff }) {
   const catSet = useMemo(() => new Set(cat.genes), [cat.genes])
 
-  const { bg, up, down, ns, dim, nUp, nDown } = useMemo(() => {
-    const bg = [], up = [], down = [], ns = [], dim = []
+  const { bg, up, down, ns, nUp, nDown } = useMemo(() => {
+    const bg = [], up = [], down = [], ns = []
     let nUp = 0, nDown = 0
     for (const r of allGenes) {
       const lfc = r.log2FoldChange, padj = r.padj
@@ -37,15 +37,14 @@ function MiniVolcano({ cat, allGenes, scale, padjCutoff, lfcCutoff, selectionSet
       const nlog = padj > 0 ? Math.min(-Math.log10(padj), 300) : 300
       const xy = [scale.x(lfc), scale.y(nlog)]
       if (!catSet.has(r.symbol)) { bg.push(xy); continue }
-      if (selectionSet && !selectionSet.has(r.symbol)) { dim.push(xy); continue }
       const isUp = padj < padjCutoff && lfc > lfcCutoff
       const isDown = padj < padjCutoff && lfc < -lfcCutoff
       if (isUp) { up.push(xy); nUp++ }
       else if (isDown) { down.push(xy); nDown++ }
       else ns.push(xy)
     }
-    return { bg, up, down, ns, dim, nUp, nDown }
-  }, [allGenes, catSet, scale, padjCutoff, lfcCutoff, selectionSet])
+    return { bg, up, down, ns, nUp, nDown }
+  }, [allGenes, catSet, scale, padjCutoff, lfcCutoff])
 
   // ── Expanded-mode hover ───────────────────────────────────────────────
   // Every plotted point is hoverable, background genes included: the cursor
@@ -91,12 +90,11 @@ function MiniVolcano({ cat, allGenes, scale, padjCutoff, lfcCutoff, selectionSet
       <line x1={scale.x(0)} y1="1" x2={scale.x(0)} y2="105"
             stroke="var(--rule-faint)" strokeWidth="1" />
       <path d={circlesPath(bg, 1.3)} fill="var(--de-ns)" opacity="0.35" />
-      {dim.length > 0 && <path d={circlesPath(dim, 2.1)} fill="var(--de-dimmed)" opacity="0.14" />}
       <path d={circlesPath(ns, 2.1)} fill="var(--overlay-ns)" opacity="0.8" />
       <path d={circlesPath(down, 2.1)} fill="var(--overlay-down)" />
       <path d={circlesPath(up, 2.1)} fill="var(--overlay-up)" />
     </svg>
-  ), [cat.name, nUp, nDown, scale, bg, dim, ns, down, up])
+  ), [cat.name, nUp, nDown, scale, bg, ns, down, up])
 
   return (
     <div ref={ref} {...handlers}
@@ -138,7 +136,7 @@ function MiniVolcano({ cat, allGenes, scale, padjCutoff, lfcCutoff, selectionSet
 }
 
 export default function CategoryVolcanoSection({
-  projectId, padjCutoff, lfcCutoff, selectionSet,
+  projectId, padjCutoff, lfcCutoff,
 }) {
   const [view, setView] = useState('interactive')
   const [loading, setLoading] = useState(false)
@@ -247,7 +245,6 @@ export default function CategoryVolcanoSection({
                     scale={scale}
                     padjCutoff={padjCutoff}
                     lfcCutoff={lfcCutoff}
-                    selectionSet={selectionSet}
                   />
                 ))}
               </div>

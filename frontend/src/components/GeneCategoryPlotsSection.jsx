@@ -7,7 +7,7 @@ import { SegToggle } from './ui'
 
 export default function GeneCategoryPlotsSection({
   projectId, hasFpkm, hasDe,
-  padjCutoff, lfcCutoff, selection, selectionSet,
+  padjCutoff, lfcCutoff,
   expandedPanel, onToggleExpand,
 }) {
   const [mode, setMode] = useState(hasDe ? 'volcano' : 'heatmap')
@@ -24,7 +24,7 @@ export default function GeneCategoryPlotsSection({
     <PanelFrame
       id="categories"
       title="Categories"
-      kicker={selection ? selection.label : '2×2 · shared taxonomy'}
+      kicker="2×2 · shared taxonomy"
       headerRight={headerRight}
       expandedPanel={expandedPanel}
       onToggleExpand={onToggleExpand}
@@ -63,11 +63,10 @@ export default function GeneCategoryPlotsSection({
             projectId={projectId}
             padjCutoff={padjCutoff}
             lfcCutoff={lfcCutoff}
-            selectionSet={selectionSet}
           />
         )}
         {mode === 'heatmap' && hasFpkm && (
-          <CategoryHeatmapSection projectId={projectId} selectionSet={selectionSet} />
+          <CategoryHeatmapSection projectId={projectId} />
         )}
       </div>
     </PanelFrame>
