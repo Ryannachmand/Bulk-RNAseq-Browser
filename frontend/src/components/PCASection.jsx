@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getProjectPca } from '../api/client'
 import PanelFrame from './PanelFrame'
 import PCAPlot from './PCAPlot'
@@ -11,7 +11,7 @@ const VIEW = [
 ]
 
 export default function PCASection({
-  projectId, projectName, samplesError,
+  projectId, projectName, samplesData, samplesError,
   expandedPanel, onToggleExpand,
 }) {
   const [view, setView] = useState('interactive')
@@ -35,10 +35,26 @@ export default function PCASection({
     }
   }
 
-  useEffect(() => { fetchPca() }, [projectId])  // eslint-disable-line react-hooks/exhaustive-deps
+  // Refetch when the saved sample metadata changes, not just when the project
+  // does. Condition and batch never affect which transform runs — the method
+  // is settled by whether raw counts exist — but they do decide the point
+  // colours and whether a batch-corrected block can be computed at all, and
+  // the panel mounts before the metadata editor has been through. The VST
+  // result is cached server-side on its parameters, so an unchanged metadata
+  // table costs a cache read rather than a second R run.
+  const metaKey = useMemo(() => {
+    const m = samplesData?.metadata
+    if (!m) return ''
+    return Object.keys(m).sort()
+      .map(s => `${s}:${m[s]?.condition ?? ''}/${m[s]?.batch ?? ''}/${m[s]?.inferred ? 'i' : 's'}`)
+      .join('|')
+  }, [samplesData])
+
+  useEffect(() => { fetchPca() }, [projectId, metaKey])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasCorrected = !!pcaData?.corrected
   const isVst = pcaData?.pca_method === 'VST'
+  const metaInferred = !!pcaData?.raw?.meta_inferred
   const showCorrected = useCorrected && hasCorrected
 
   const pcX = 'PC1'
@@ -50,12 +66,23 @@ export default function PCASection({
     return { PC1: v[0], PC2: v[1], PC3: v[2] }
   })()
 
+  // The method is decided by what the project holds, never by what has been
+  // run on it: raw counts give a VST, and only a project without raw counts
+  // falls back to log2(FPKM + 1). Both states of a raw-counts project are
+  // described here — before any metadata is saved, and after a contrast has
+  // been run — because the transform is the same one in each.
   const methodNote = !pcaData ? '' : showCorrected
     ? 'limma::removeBatchEffect applied to the transformed matrix for visualisation only. ' +
       'The DE model is not refitted from these coordinates — it keeps batch as a covariate in its own design.'
     : isVst
-      ? 'Coordinates from DESeq2 vst(blind = TRUE) on the raw counts, so the transformation is blind ' +
-        `to the design and does not bias the plot toward the contrast. Top ${pcaData.n_genes_used} most-variable genes.`
+      ? 'Coordinates from DESeq2 vst(blind = TRUE) on the raw counts, fitted under design ~ 1. ' +
+        'The transform is blind to condition and batch, so it is available as soon as the counts are ' +
+        'uploaded and running a DESeq2 contrast does not change it. ' +
+        (metaInferred
+          ? 'Conditions here are inferred from the sample names — save the sample metadata to colour ' +
+            'the points by your own groups and to unlock batch correction. '
+          : '') +
+        `Top ${pcaData.n_genes_used} most-variable genes.`
       : 'No raw counts for this project, so a VST could not be computed — PCA runs on log2(FPKM + 1) ' +
         `instead. Top ${pcaData.n_genes_used} most-variable genes.`
 

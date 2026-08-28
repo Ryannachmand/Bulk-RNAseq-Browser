@@ -129,7 +129,9 @@ def _capabilities(project: dict) -> dict:
         "tabs": {
             "volcano": has_de,
             "heatmap": has_fpkm,
-            "pca": has_fpkm,
+            # PCA needs one expression matrix of either kind: raw counts give
+            # a VST, FPKM gives the log2(FPKM+1) fallback.
+            "pca": has_fpkm or has_raw_counts,
             "gene_category_plots": has_de or has_fpkm,
             # Unlocks when pathway data exists OR when DE is present and enrichGO can be run
             "pathway_barplot": has_pathway or has_de,
@@ -423,6 +425,28 @@ def render_project_r_heatmap(project_id: str, params: RHeatmapParams):
     return FileResponse(png_path, media_type="image/png", filename="heatmap.png")
 
 
+def _vst_metadata(project: dict, raw_counts_id: str) -> tuple[dict, bool]:
+    """Metadata to run the VST PCA with, plus whether it had to be inferred.
+
+    VST depends only on the raw counts: vst(blind = TRUE) is fitted under
+    design ~ 1, so condition and batch never enter the transform. They label
+    the points and supply the batch-correction design, nothing else. An
+    unsaved metadata table therefore must not push PCA onto the FPKM
+    fallback — conditions are inferred from the sample names exactly as the
+    FPKM path and the samples endpoint already do, and the caller is told
+    they were inferred.
+    """
+    saved = project.get("metadata") or {}
+    if saved:
+        return saved, False
+
+    df = load_raw_counts(raw_counts_id)
+    if df is None:
+        return {}, True
+    inferred = _infer_conditions(list(df.columns))
+    return {s: {"condition": c, "batch": ""} for s, c in inferred.items()}, True
+
+
 @router.get("/{project_id}/pca")
 def get_project_pca(project_id: str, n_genes: int = Query(default=500, ge=1, le=5000)):
     project = load_project(project_id)
@@ -433,17 +457,22 @@ def get_project_pca(project_id: str, n_genes: int = Query(default=500, ge=1, le=
     raw_counts_id = project.get("raw_counts_dataset_id")
     fpkm_id = project.get("fpkm_dataset_id")
 
-    # VST PCA when raw counts + saved metadata are available
-    if raw_counts_id and meta:
+    # Raw counts is checked first and on its own: a true VST is available for
+    # any project that has counts, whether or not metadata has been saved and
+    # whether or not a DE contrast has ever been run. FPKM is computed
+    # automatically for these projects, so testing it first would let the
+    # fallback win every time.
+    if raw_counts_id:
+        vst_meta, meta_inferred = _vst_metadata(project, raw_counts_id)
         try:
-            result = _compute_vst_pca(raw_counts_id, meta, n_genes)
+            result = _compute_vst_pca(raw_counts_id, vst_meta, n_genes, meta_inferred)
         except RuntimeError as e:
             raise HTTPException(status_code=500, detail=str(e))
         if result is None:
             raise HTTPException(status_code=404, detail="Raw counts not found")
         return result
 
-    # Fallback: log2(FPKM+1) PCA
+    # Fallback: log2(FPKM+1) PCA — only for projects with no raw counts at all.
     if not fpkm_id:
         raise HTTPException(status_code=422, detail="Project has no FPKM or raw counts dataset")
     result = _compute_pca(fpkm_id, n_genes, override_metadata=meta)
@@ -464,10 +493,13 @@ def render_project_r_pca(project_id: str, params: RPcaParams):
 
     plot_title = params.plot_title or project.get("name", "")
 
-    # VST PCA when raw counts + saved metadata are available
-    if raw_counts_id and meta:
+    # Same priority as GET /pca: raw counts first, FPKM only as the fallback,
+    # so the R render never disagrees with the interactive plot about which
+    # transform produced the coordinates.
+    if raw_counts_id:
+        vst_meta, meta_inferred = _vst_metadata(project, raw_counts_id)
         try:
-            pca_data = _compute_vst_pca(raw_counts_id, meta, params.n_genes)
+            pca_data = _compute_vst_pca(raw_counts_id, vst_meta, params.n_genes, meta_inferred)
         except RuntimeError as e:
             raise HTTPException(status_code=500, detail=str(e))
         if pca_data is None:

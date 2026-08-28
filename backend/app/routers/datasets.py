@@ -322,6 +322,10 @@ def _compute_pca(dataset_id: str, n_genes: int = 500, override_metadata: dict | 
         "raw": raw,
         "corrected": corrected,
         "n_genes_used": int(len(top_idx)),
+        # Named explicitly rather than left absent: the UI reads this key to
+        # describe the transform, and an absent key is indistinguishable from
+        # a response the client failed to understand.
+        "pca_method": "FPKM",
     }
 
 
