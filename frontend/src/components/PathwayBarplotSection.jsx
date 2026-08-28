@@ -1,32 +1,106 @@
-import { useEffect, useState } from 'react'
-import Plot from 'react-plotly.js'
+import { useEffect, useMemo, useState } from 'react'
 import { getProjectPathwayResults, renderProjectRPathwayBarplot, runPathwayAnalysis } from '../api/client'
+import PanelFrame from './PanelFrame'
+import { ErrorMsg, ROutput, SegToggle } from './ui'
 
-const TAB_PLOTLY = 'plotly'
-const TAB_R      = 'r'
+const VIEW = [
+  { value: 'interactive', label: 'Interactive' },
+  { value: 'r', label: 'R-exact' },
+]
 
-export default function PathwayBarplotSection({ projectId, projectName, hasPathway, hasDe, deProvenance }) {
+const BAR_MAX = 100          // px, longest bar either side of the zero line
+const ROW_H = 19
+const BAR_H = 13
+
+function isUp(row) {
+  return String(row.direction || '').toLowerCase().startsWith('up')
+}
+
+/** One diverging bar row. A real button so it is tabbable and Enter/Space works. */
+function PathwayRow({ row, value, max, selected, anySelected, directionAvailable, onClick }) {
+  const up = !directionAvailable || isUp(row)
+  const frac = max > 0 ? Math.min(1, Math.abs(value) / max) : 0
+  const len = Math.max(2, frac * BAR_MAX)
+  const base = up ? 'var(--de-up)' : 'var(--de-down)'
+  const fill = anySelected && !selected
+    ? `color-mix(in srgb, ${base} 38%, #eae9e9)`
+    : base
+
+  return (
+    <button
+      type="button"
+      className="pw-row"
+      aria-pressed={selected}
+      title={`${row.Description} · p.adjust ${Number(row['p.adjust']).toExponential(2)} · ${row.Count} genes`}
+      onClick={onClick}
+    >
+      <span style={{
+        fontWeight: 500, fontSize: 10.5,
+        color: selected ? 'var(--ink)' : 'var(--ink-700)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {row.Description_short || row.Description}
+      </span>
+
+      <span style={{ position: 'relative', height: ROW_H, minWidth: 0 }}>
+        <span aria-hidden="true" style={{
+          position: 'absolute', left: '50%', top: 0, bottom: 0,
+          width: 1, background: 'var(--ink)',
+        }} />
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute', top: (ROW_H - BAR_H) / 2, height: BAR_H,
+            width: len,
+            background: fill,
+            border: selected ? '1.5px solid var(--ink)' : 'none',
+            ...(up ? { left: '50%' } : { right: '50%' }),
+          }}
+        />
+        <span
+          className="t-num"
+          style={{
+            position: 'absolute', top: 4, fontWeight: 600, fontSize: 9.5,
+            color: 'var(--ink-600)', whiteSpace: 'nowrap',
+            ...(up
+              ? { left: `min(calc(50% + ${len + 4}px), calc(100% - 30px))` }
+              : { right: `min(calc(50% + ${len + 4}px), calc(100% - 30px))` }),
+          }}
+        >
+          n={row.Count}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+export default function PathwayBarplotSection({
+  projectId, projectName, hasPathway, hasDe, deProvenance,
+  selection, onSelectPathway, onPathwayComputed,
+  expandedPanel, onToggleExpand,
+}) {
+  const [view, setView] = useState('interactive')
+  const [topN, setTopN] = useState(20)
+  const [plotTitle, setPlotTitle] = useState(projectName || 'Pathway Enrichment')
+
   const [directionAvailable, setDirAvail] = useState(false)
-  const [tab, setTab]                     = useState(TAB_PLOTLY)
-  const [topN, setTopN]                   = useState(20)
-  const [plotTitle, setPlotTitle]         = useState(projectName || 'Pathway Enrichment')
+  const [loading, setLoading] = useState(false)
+  const [rows, setRows] = useState(null)
+  const [loadError, setLoadError] = useState(null)
 
-  const [loading, setLoading]             = useState(false)
-  const [rows, setRows]                   = useState(null)
-  const [loadError, setLoadError]         = useState(null)
+  const [rLoading, setRLoading] = useState(false)
+  const [rError, setRError] = useState(null)
+  const [rImageUrl, setRImageUrl] = useState(null)
 
-  const [rLoading, setRLoading]           = useState(false)
-  const [rError, setRError]               = useState(null)
-  const [rImageUrl, setRImageUrl]         = useState(null)
-
-  // enrichGO run state
+  // enrichGO run state — its cutoffs are run parameters, deliberately kept
+  // separate from the dashboard's display thresholds.
   const [enrichPadjCutoff, setEnrichPadj] = useState(0.05)
-  const [enrichLfcCutoff, setEnrichLfc]   = useState(1.0)
+  const [enrichLfcCutoff, setEnrichLfc] = useState(1.0)
+  const [enrichOpen, setEnrichOpen] = useState(false)
   const [enrichRunning, setEnrichRunning] = useState(false)
-  const [enrichError, setEnrichError]     = useState(null)
-  const [enrichDone, setEnrichDone]       = useState(false)
+  const [enrichError, setEnrichError] = useState(null)
+  const [enrichDone, setEnrichDone] = useState(false)
 
-  // Load pathway data if it already exists
   useEffect(() => {
     if (!hasPathway) return
     setLoading(true)
@@ -50,12 +124,12 @@ export default function PathwayBarplotSection({ projectId, projectName, hasPathw
     try {
       await runPathwayAnalysis(projectId, { padjCutoff: enrichPadjCutoff, lfcCutoff: enrichLfcCutoff })
       setEnrichDone(true)
-      // Load the freshly computed pathway results
       setLoading(true)
       const { rows: r, direction_available } = await getProjectPathwayResults(projectId, topN)
       setRows(r)
       setDirAvail(direction_available)
       setLoading(false)
+      onPathwayComputed?.()
     } catch (e) {
       setEnrichError(e.message)
     } finally {
@@ -68,8 +142,7 @@ export default function PathwayBarplotSection({ projectId, projectName, hasPathw
     setRError(null)
     setRImageUrl(null)
     try {
-      const url = await renderProjectRPathwayBarplot(projectId, { topN, plotTitle })
-      setRImageUrl(url)
+      setRImageUrl(await renderProjectRPathwayBarplot(projectId, { topN, plotTitle }))
     } catch (e) {
       setRError(e.message)
     } finally {
@@ -77,295 +150,183 @@ export default function PathwayBarplotSection({ projectId, projectName, hasPathw
     }
   }
 
-  const tabStyle = (active) => ({
-    padding: '0.35rem 1rem',
-    border: '1px solid #ccc',
-    borderBottom: active ? '1px solid #fff' : '1px solid #ccc',
-    background: active ? '#fff' : '#f5f5f5',
-    cursor: 'pointer',
-    fontWeight: active ? 600 : 400,
-    fontSize: '0.9em',
-    marginBottom: -1,
-    position: 'relative',
-  })
+  const valueOf = r => (directionAvailable ? r.neg_log10_padj_signed : r.neg_log10_padj)
 
-  if (loading) return <p style={{ color: '#555' }}>Loading pathway data…</p>
+  const ordered = useMemo(() => {
+    if (!rows) return []
+    const out = [...rows]
+    // Most up-regulated first, most down-regulated last — the reading order
+    // the Plotly barplot produced.
+    out.sort((a, b) => valueOf(b) - valueOf(a))
+    return out
+  }, [rows, directionAvailable])
 
-  const inputNum = (val, onChange, min, step) => ({
-    type: 'number', value: val, min, step,
-    onChange: e => onChange(Number(e.target.value)),
-    style: { width: 72, padding: '0.2rem 0.4rem', border: '1px solid #ccc', borderRadius: 3 },
-  })
+  const max = useMemo(
+    () => ordered.reduce((m, r) => Math.max(m, Math.abs(valueOf(r))), 0),
+    [ordered, directionAvailable]
+  )
+
+  const headerRight = (
+    <SegToggle ariaLabel="Pathway view" options={VIEW} value={view} onChange={setView} />
+  )
 
   return (
-    <div>
-      {/* Run Pathway Analysis panel — shown whenever DE exists (even if pathway data already exists) */}
-      {hasDe && (
+    <PanelFrame
+      id="pathways"
+      title="Pathways"
+      kicker="enrichGO · BP"
+      headerRight={headerRight}
+      expandedPanel={expandedPanel}
+      onToggleExpand={onToggleExpand}
+      bodyStyle={{ padding: 0 }}
+    >
+      {/* shared sub-bar — governs both views */}
+      <div style={{
+        background: 'var(--ground-alt)',
+        borderBottom: '1.5px solid var(--rule-mid)',
+        padding: '10px 14px 11px',
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      }}>
+        <label className="t-util t-util-field" htmlFor="pw-topn">Top N per direction</label>
+        <input
+          id="pw-topn" type="number" className="fld" style={{ width: 64 }}
+          min={1} max={50} value={topN}
+          onChange={e => setTopN(Number(e.target.value))}
+        />
+        {hasDe && (
+          <button
+            type="button"
+            className="btn btn-outline"
+            style={{ marginLeft: 'auto' }}
+            aria-expanded={enrichOpen}
+            onClick={() => setEnrichOpen(o => !o)}
+          >
+            {hasPathway ? 'Re-run enrichGO' : 'Run enrichGO'}
+          </button>
+        )}
+      </div>
+
+      {/* enrichGO run block */}
+      {hasDe && enrichOpen && (
         <div style={{
-          marginBottom: '1.25rem',
-          padding: '1rem 1.25rem',
-          background: enrichDone ? '#f0fdf4' : '#f8fafc',
-          border: `1px solid ${enrichDone ? '#bbf7d0' : '#e2e8f0'}`,
-          borderRadius: 6,
+          padding: '11px 14px 13px',
+          borderBottom: '1.5px solid var(--rule-mid)',
+          display: 'flex', flexDirection: 'column', gap: 9,
         }}>
-          <div style={{ fontWeight: 600, fontSize: '0.9em', color: '#111827', marginBottom: '0.5rem' }}>
-            Run Pathway Analysis (clusterProfiler enrichGO · BP)
-          </div>
-          {deProvenance && (
-            <div style={{ fontSize: '0.8em', color: '#6b7280', marginBottom: '0.6rem' }}>
-              DE source: <strong>{deProvenance}</strong>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85em' }}>
-              padj cutoff:
-              <input {...inputNum(enrichPadjCutoff, setEnrichPadj, 0.001, 0.001)} />
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85em' }}>
-              |LFC| cutoff:
-              <input {...inputNum(enrichLfcCutoff, setEnrichLfc, 0, 0.1)} />
-            </label>
-            <button
-              onClick={handleRunEnrichGO}
-              disabled={enrichRunning}
-              style={{
-                padding: '0.4rem 1rem',
-                background: enrichRunning ? '#9ca3af' : '#7c3aed',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 4,
-                fontSize: '0.85em',
-                fontWeight: 600,
-                cursor: enrichRunning ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {enrichRunning ? 'Running enrichGO…' : enrichDone ? 'Re-run Pathway Analysis' : 'Run Pathway Analysis'}
+          <p className="t-note" style={{ margin: 0 }}>
+            clusterProfiler <code className="t-mono">enrichGO</code> · BP, from{' '}
+            <strong>{deProvenance || 'the DE table'}</strong>. These cutoffs select the
+            input gene set for enrichment; they are separate from the dashboard thresholds.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <label className="t-util t-util-field" htmlFor="pw-padj">padj cutoff</label>
+              <input id="pw-padj" type="number" className="fld" style={{ width: 78 }}
+                     min={0.001} step={0.001} value={enrichPadjCutoff}
+                     onChange={e => setEnrichPadj(Number(e.target.value))} />
+            </span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <label className="t-util t-util-field" htmlFor="pw-lfc">|LFC| cutoff</label>
+              <input id="pw-lfc" type="number" className="fld" style={{ width: 78 }}
+                     min={0} step={0.1} value={enrichLfcCutoff}
+                     onChange={e => setEnrichLfc(Number(e.target.value))} />
+            </span>
+            <button type="button" className="btn btn-primary"
+                    onClick={handleRunEnrichGO} disabled={enrichRunning}>
+              {enrichRunning ? 'Running enrichGO…' : 'Run pathway analysis'}
             </button>
           </div>
           {enrichRunning && (
-            <p style={{ fontSize: '0.8em', color: '#6b7280', marginTop: '0.5rem' }}>
+            <p className="msg-wait" style={{ margin: 0 }}>
               Running clusterProfiler enrichGO — this may take 30–90 seconds. Do not close this page.
             </p>
           )}
           {enrichDone && (
-            <p style={{ fontSize: '0.82em', color: '#16a34a', marginTop: '0.5rem' }}>
-              ✓ Pathway analysis complete. Results shown below.
+            <p className="t-note" style={{ margin: 0, color: 'var(--accent-deep)', fontWeight: 600 }}>
+              Pathway analysis complete. Results below.
             </p>
           )}
-          {enrichError && (
-            <div style={{
-              marginTop: '0.6rem',
-              padding: '0.5rem 0.75rem',
-              background: '#fef2f2',
-              border: '1px solid #fca5a5',
-              borderRadius: 4,
-              color: '#dc2626',
-              fontSize: '0.8em',
-              fontFamily: 'monospace',
-              whiteSpace: 'pre-wrap',
-              maxHeight: 180,
-              overflowY: 'auto',
-            }}>
-              <strong style={{ fontFamily: 'system-ui' }}>Error:</strong>
-              {'\n'}{enrichError}
-            </div>
-          )}
+          <ErrorMsg>{enrichError}</ErrorMsg>
         </div>
       )}
 
-      {/* No pathway data yet and DE exists — prompt to run */}
-      {!rows && !loadError && hasDe && !enrichDone && (
-        <p style={{ color: '#6b7280', fontSize: '0.9em' }}>
-          Click "Run Pathway Analysis" above to compute GO Biological Process enrichment from your DE results.
-        </p>
-      )}
+      <div style={{ padding: '11px 14px 13px' }}>
+        {loading && <p className="msg-wait">Loading pathway data…</p>}
+        <ErrorMsg>{loadError}</ErrorMsg>
 
-      {loadError && <p style={{ color: '#cc2222' }}><strong>Error loading pathway data:</strong> {loadError}</p>}
+        {!hasPathway && !rows && !loadError && hasDe && (
+          <p className="t-body" style={{ margin: 0 }}>
+            No enrichment results yet. Open <strong>Run enrichGO</strong> above to compute GO
+            Biological Process enrichment from the DE results.
+          </p>
+        )}
 
-      {/* Pathway plot — only shown when data is available */}
-      {rows && (
-      <>
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #ccc' }}>
-        <button style={tabStyle(tab === TAB_PLOTLY)} onClick={() => setTab(TAB_PLOTLY)}>
-          Interactive (Plotly)
-        </button>
-        <button style={tabStyle(tab === TAB_R)} onClick={() => setTab(TAB_R)}>
-          R-exact
-        </button>
-      </div>
-
-      <div style={{ border: '1px solid #ccc', borderTop: 'none', padding: '1rem', background: '#fff' }}>
-        {/* Shared top-N control */}
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9em' }}>
-            Top pathways per direction:
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={topN}
-              onChange={e => setTopN(Number(e.target.value))}
-              style={{ width: 60, padding: '0.2rem 0.4rem', border: '1px solid #ccc', borderRadius: 3 }}
-            />
-          </label>
-
-          {!directionAvailable && (
-            <span style={{
-              background: '#fef9c3',
-              border: '1px solid #ca8a04',
-              borderRadius: 4,
-              padding: '0.2rem 0.6rem',
-              fontSize: '0.82em',
-              color: '#78350f',
-            }}>
-              Direction data not available — showing pathways sorted by significance
-            </span>
-          )}
-        </div>
-
-        {/* Interactive tab */}
-        {tab === TAB_PLOTLY && (
+        {rows && view === 'interactive' && (
           <>
-            {rows && <PathwayPlot rows={rows} directionAvailable={directionAvailable} />}
-            {!rows && <p style={{ color: '#555' }}>No pathway data to display.</p>}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 7 }}>
+              <span style={{
+                fontWeight: 500, fontSize: 10, letterSpacing: '.1em',
+                textTransform: 'uppercase', color: 'var(--ink-500)',
+              }}>
+                {directionAvailable ? '↤ down · ±(−log10 padj) · up ↦' : '−log10 padj ↦'}
+              </span>
+              <span className="t-note" style={{ marginLeft: 'auto' }}>top {topN}</span>
+            </div>
+
+            {!directionAvailable && (
+              <p className="warn-strip t-note" style={{ margin: '0 0 8px', color: 'var(--accent-darkest)' }}>
+                Direction data not available — pathways are sorted by significance only.
+              </p>
+            )}
+
+            <div role="group" aria-label="Enriched pathways">
+              {ordered.map((r, i) => (
+                <PathwayRow
+                  key={r.Description + i}
+                  row={r}
+                  value={valueOf(r)}
+                  max={max}
+                  directionAvailable={directionAvailable}
+                  selected={selection?.id === r.Description}
+                  anySelected={!!selection}
+                  onClick={() => onSelectPathway(selection?.id === r.Description ? null : r)}
+                />
+              ))}
+            </div>
+
+            <p className="t-note" style={{ margin: '9px 0 0' }}>
+              Click a bar to project its gene set onto the volcano, heatmap, DE table and
+              categories. Clicking again, or Esc, clears it.
+            </p>
           </>
         )}
 
-        {/* R-exact tab */}
-        {tab === TAB_R && (
-          <div>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9em' }}>
-                Plot title:
-                <input
-                  type="text"
-                  value={plotTitle}
-                  onChange={e => setPlotTitle(e.target.value)}
-                  style={{ width: 220, padding: '0.2rem 0.4rem', border: '1px solid #ccc', borderRadius: 3 }}
-                />
-              </label>
-              <button
-                onClick={handleRender}
-                disabled={rLoading}
-                style={{
-                  padding: '0.4rem 1rem',
-                  background: '#16a34a',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: rLoading ? 'not-allowed' : 'pointer',
-                  opacity: rLoading ? 0.6 : 1,
-                }}
-              >
+        {rows && view === 'r' && (
+          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ width: 196, flex: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <label className="t-util t-util-field" htmlFor="pw-title"
+                       style={{ display: 'block', marginBottom: 5 }}>
+                  Plot title
+                </label>
+                <input id="pw-title" type="text" className="fld" style={{ width: '100%' }}
+                       value={plotTitle} onChange={e => setPlotTitle(e.target.value)} />
+              </div>
+              <p className="t-note" style={{ margin: 0 }}>
+                Rendered by <code className="t-mono">render_pathway_barplot.R</code> at the
+                same top-N as the interactive view.
+              </p>
+              <button type="button" className="btn btn-primary" onClick={handleRender} disabled={rLoading}>
                 {rLoading ? 'Generating…' : 'Generate R plot'}
               </button>
             </div>
-
-            {rError && (
-              <p style={{ color: '#cc2222' }}><strong>R error:</strong> {rError}</p>
-            )}
-
-            {rImageUrl && (
-              <div>
-                <img src={rImageUrl} alt="Pathway barplot" style={{ maxWidth: '100%', border: '1px solid #eee' }} />
-                <div style={{ marginTop: '0.5rem', fontSize: '0.85em', color: '#555' }}>
-                  <a href={rImageUrl} download="pathway_barplot.png">Download PNG</a>
-                </div>
-              </div>
-            )}
+            <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <ErrorMsg label="R error">{rError}</ErrorMsg>
+              <ROutput imgUrl={rImageUrl} filename="pathway_barplot.png" alt="R pathway barplot" />
+            </div>
           </div>
         )}
       </div>
-      </>
-      )}
-    </div>
-  )
-}
-
-
-function PathwayPlot({ rows, directionAvailable }) {
-  if (!rows || rows.length === 0) {
-    return <p style={{ color: '#555' }}>No pathways to display.</p>
-  }
-
-  const UP_COLOR   = '#E41A1C'
-  const DOWN_COLOR = '#FB9A99'
-  const SOLO_COLOR = '#E41A1C'
-
-  let traces
-  let layout
-
-  if (directionAvailable) {
-    const up   = rows.filter(r => String(r.direction || '').toLowerCase().startsWith('up'))
-    const down = rows.filter(r => String(r.direction || '').toLowerCase().startsWith('down'))
-    const all  = [...rows].sort((a, b) => a.neg_log10_padj_signed - b.neg_log10_padj_signed)
-    const yLabels = all.map(r => r.Description_short)
-
-    const makeTrace = (subset, color, name) => ({
-      type: 'bar',
-      orientation: 'h',
-      name,
-      x: subset.map(r => r.neg_log10_padj_signed),
-      y: subset.map(r => r.Description_short),
-      marker: { color },
-      customdata: subset.map(r => ({ desc: r.Description, padj: r['p.adjust'], genes: r.geneID, count: r.Count })),
-      hovertemplate: '<b>%{customdata.desc}</b><br>p.adjust: %{customdata.padj:.2e}<br>Gene count: %{customdata.count}<br>Genes: %{customdata.genes}<extra></extra>',
-      text: subset.map(r => `n=${r.Count}`),
-      textposition: 'outside',
-    })
-
-    traces = [makeTrace(up, UP_COLOR, 'Upregulated'), makeTrace(down, DOWN_COLOR, 'Downregulated')]
-    const maxAbsVal = Math.max(...all.map(r => Math.abs(r.neg_log10_padj_signed))) * 1.25
-    const range = maxAbsVal
-    const step  = range / 4
-    const ticks = [-4, -3, -2, -1, 0, 1, 2, 3, 4].map(i => i * step)
-
-    layout = {
-      barmode: 'overlay',
-      xaxis: {
-        title: '-log10(adjusted p-value)',
-        range: [-maxAbsVal, maxAbsVal],
-        tickvals: ticks,
-        ticktext: ticks.map(v => Math.abs(v).toFixed(1)),
-        automargin: true,
-      },
-      yaxis: { categoryorder: 'array', categoryarray: yLabels, automargin: true, tickfont: { size: 12 } },
-      shapes: [{ type: 'line', x0: 0, x1: 0, y0: -0.5, y1: rows.length - 0.5, yref: 'paper', xref: 'x', line: { color: 'black', width: 1 } }],
-      legend: { orientation: 'h', y: -0.15 },
-      margin: { l: 20, r: 20, t: 40, b: 60 },
-      height: Math.max(400, rows.length * 22 + 120),
-    }
-  } else {
-    const sorted = [...rows].sort((a, b) => a.neg_log10_padj - b.neg_log10_padj)
-    traces = [{
-      type: 'bar',
-      orientation: 'h',
-      name: 'Pathways',
-      x: sorted.map(r => r.neg_log10_padj),
-      y: sorted.map(r => r.Description_short),
-      marker: { color: SOLO_COLOR },
-      customdata: sorted.map(r => ({ desc: r.Description, padj: r['p.adjust'], genes: r.geneID, count: r.Count })),
-      hovertemplate: '<b>%{customdata.desc}</b><br>p.adjust: %{customdata.padj:.2e}<br>Gene count: %{customdata.count}<br>Genes: %{customdata.genes}<extra></extra>',
-      text: sorted.map(r => `n=${r.Count}`),
-      textposition: 'outside',
-    }]
-    layout = {
-      xaxis: { title: '-log10(adjusted p-value)', automargin: true },
-      yaxis: { automargin: true, tickfont: { size: 12 } },
-      margin: { l: 20, r: 60, t: 40, b: 40 },
-      height: Math.max(350, rows.length * 22 + 100),
-      showlegend: false,
-    }
-  }
-
-  return (
-    <Plot
-      data={traces}
-      layout={{ ...layout, paper_bgcolor: 'white', plot_bgcolor: 'white', font: { family: 'system-ui, sans-serif', size: 12 } }}
-      config={{ responsive: true, displayModeBar: true, toImageButtonOptions: { format: 'png', scale: 2 } }}
-      style={{ width: '100%' }}
-      useResizeHandler
-    />
+    </PanelFrame>
   )
 }
