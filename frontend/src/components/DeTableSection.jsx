@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import PanelFrame from './PanelFrame'
 import { ErrorMsg, fmtExp, fmtNum, fmtSigned } from './ui'
 
@@ -27,6 +27,12 @@ export default function DeTableSection({
   const [sortKey, setSortKey] = useState('padj')
   const [sortAsc, setSortAsc] = useState(true)
   const [shown, setShown] = useState(PAGE)
+  const [grouped, setGrouped] = useState(false)
+
+  // Same keying as the volcano's label override: grouping re-engages on a
+  // change of pathway identity, and a reset is not undone by a re-render
+  // under the same pathway.
+  useEffect(() => { setGrouped(!!selection) }, [selection?.id])
 
   const fpkmCols = useMemo(() => {
     if (!rows || rows.length === 0) return []
@@ -61,6 +67,17 @@ export default function DeTableSection({
     return out
   }, [rows, sortKey, sortAsc])
 
+  // Members-first is a grouping over the FULL sorted set, applied before the
+  // slice below pages it — regrouping only the visible page would look like a
+  // no-op for any pathway whose genes sit past row 200. Partitioning a sorted
+  // array is stable, so the active column sort still orders each group.
+  const ordered = useMemo(() => {
+    if (!grouped || !selectionSet) return sorted
+    const members = [], others = []
+    for (const r of sorted) (selectionSet.has(symbolOf(r)) ? members : others).push(r)
+    return [...members, ...others]
+  }, [sorted, grouped, selectionSet])
+
   function toggleSort(key) {
     if (key === sortKey) { setSortAsc(a => !a) }
     else { setSortKey(key); setSortAsc(key === '__symbol' || key === 'padj') }
@@ -71,7 +88,7 @@ export default function DeTableSection({
     if (!rows || rows.length === 0) return
     const keys = Object.keys(rows[0])
     const lines = [keys.join(',')]
-    for (const r of sorted) lines.push(keys.map(k => csvCell(r[k])).join(','))
+    for (const r of ordered) lines.push(keys.map(k => csvCell(r[k])).join(','))
     const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -88,10 +105,21 @@ export default function DeTableSection({
     ? `${selection.label} · ${sorted.filter(r => selectionSet.has(symbolOf(r))).length} in set`
     : `${total.toLocaleString('en-US').replace(/,/g, ' ')} genes · sorted by ${sortKey === '__symbol' ? 'symbol' : sortKey}`
 
+  const groupingActive = grouped && !!selectionSet
+
   const headerRight = (
-    <button type="button" className="btn btn-outline" onClick={handleExport} disabled={!rows || total === 0}>
-      Export CSV
-    </button>
+    <>
+      {groupingActive && (
+        <button type="button" className="btn btn-outline"
+                title="Sort every row by the active column, ignoring pathway membership"
+                onClick={() => setGrouped(false)}>
+          Reset DE table
+        </button>
+      )}
+      <button type="button" className="btn btn-outline" onClick={handleExport} disabled={!rows || total === 0}>
+        Export CSV
+      </button>
+    </>
   )
 
   return (
@@ -125,7 +153,7 @@ export default function DeTableSection({
               </tr>
             </thead>
             <tbody>
-              {sorted.slice(0, shown).map((r, i) => {
+              {ordered.slice(0, shown).map((r, i) => {
                 const sym = symbolOf(r)
                 const inSel = selectionSet ? selectionSet.has(sym) : null
                 const lfc = r.log2FoldChange
