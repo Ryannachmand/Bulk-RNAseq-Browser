@@ -1,0 +1,45 @@
+Run 2026-08-28 · project 'MCW Project' (90afa131) · raw counts + FPKM + DESeq2 DE + enrichGO pathways
+Chrome via playwright-core 1.40.1 · Vite :5173 · uvicorn :8000
+
+      · pathway A = "extracellular matrix organization" (45 genes); pathway B = "extracellular structure organization" (45 genes)
+      · category panel body captured before selection (4234344 chars of markup)
+      · volcano labels with no pathway (TOP N = 5): CA12, SLC2A12, ADCY1, IGFBP2, NPR1, PRSS3, ALDH1A1, GABBR2, PRKG1, TFPI2
+PASS  1.0 volcano starts on the TOP N label set
+PASS  1.1 labels switch to the pathway members — 8 labels, every one a member: MMP10, CREB3L1, WT1, TNFRSF1B, MELTF, TGFBI, LOXL1, COL8A1
+PASS  1.2 labels are no longer the TOP N set
+      · de-collision placed 8 of 45 members; the rest fall past the plot floor
+PASS  1.3 Reset volcano appears
+PASS  1.4 reset restores the TOP N labels
+PASS  1.5 the button disappears after the click
+PASS  1.6 point highlighting is untouched by the reset — Points outside the linked gene set are dimmed.
+PASS  4.1 category panel renders identically with a pathway selected — byte-identical panel markup
+PASS  4.2 category kicker no longer echoes the pathway — 2×2 · SHARED TAXONOMY
+PASS  4.3 no dimmed layer in the mini-volcanos
+PASS  5.0a clearing the pathway drops the override and the button
+PASS  5.0b re-selecting a previously-cleared pathway re-arms the override
+PASS  5.1 Generate R Plot sends the TOP N config, not the pathway genes — {"padj_cutoff":0.05,"lfc_cutoff":1,"n_label":5,"custom_genes":null,"plot_title":"MCW Project"}
+PASS  2.1 heatmap auto-switched to LINKED PATHWAY — LINKED PATHWAY
+PASS  2.2 heatmap rows are the pathway gene set — 45 rows, all members: VWA1, TNFRSF1B, COL16A1, COL8A2, TGFBR3, CTSK …
+PASS  2.3 a gene list is entered and held — GAPDH×|ACTB×|CDH5×
+PASS  2.4 a different pathway re-triggers the auto-switch
+PASS  2.5 rows update live to the new pathway — 45 rows from pathway B
+PASS  2.6 MY GENE LIST survived the auto-switch untouched — GAPDH×|ACTB×|CDH5×
+PASS  2.7 a manual switch away is not undone on re-render — MY GENE LIST
+PASS  2.8 switching back manually still shows the pathway genes
+      · DE table kicker: "EXTRACELLULAR STRUCTURE ORGANIZATION · 45 IN SET"
+PASS  3.1 every row stays visible, non-members dimmed — 200 rows on page 1, 45 of them members
+PASS  3.2 members grouped to the top — rows 1–45 members, row 46 is not
+PASS  3.3 the grouping spans the full dataset, not the page — 45 members in the whole DE table, all 45 of them ahead of the paging boundary
+PASS  3.4 page 2 holds no stragglers — 400 rows loaded, members still confined to rows 1–45
+PASS  3.5 members follow the active column sort (padj) — padj ascending
+PASS  3.6 a new column re-sorts both groups and the grouping stands — log2FC descending: members 11.71…1.03, non-members restart at 11.07
+PASS  3.7 Reset DE table is offered while grouping is active
+PASS  3.8 reset yields one flat sort spanning all rows — members and non-members now interleaved: row-in, row-out, row-out, row-out, row-out, row-out, row-out, row-out
+PASS  3.9 dimming survives the reset
+PASS  3.10 the button disappears after the click
+PASS  6.1 volcano re-arms for the new pathway after a reset — 8 labels from pathway A
+PASS  6.2 DE table grouping re-engages after a reset — 45 members regrouped to the top
+PASS  6.3 heatmap follows the switch without a manual step
+PASS  6.4 a direct A→B switch updates all three panels live — volcano 8 labels · table 45 members on top · heatmap 45 rows
+
+ALL PASS
