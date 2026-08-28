@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import PanelFrame from './PanelFrame'
 import VolcanoPlot from './VolcanoPlot'
 import RVolcanoPanel from './RVolcanoPanel'
@@ -17,6 +17,11 @@ export default function VolcanoSection({
   expandedPanel, onToggleExpand,
 }) {
   const [view, setView] = useState('interactive')
+
+  // Pathway label override — presentational, and only over the interactive
+  // plot. It never touches labelMode/nLabel/customGenes, so the R-exact render
+  // keeps printing whatever TOP N / MY LIST is actually configured.
+  const [pathwayLabels, setPathwayLabels] = useState(false)
 
   // Label state is shared by both views — what you label is what R prints.
   const [plotTitle, setPlotTitle] = useState(projectName || '')
@@ -65,8 +70,26 @@ export default function VolcanoSection({
     return out
   }, [rows, labelMode, customGenes, knownSymbols, nLabel, padjCutoff, lfcCutoff])
 
+  // Keyed on the pathway identity, not on `selection` itself: the override
+  // re-arms for a newly selected pathway (even one reset a moment ago) and
+  // stands down when the selection is cleared, but a re-render while the same
+  // pathway stays selected leaves a reset in place.
+  useEffect(() => { setPathwayLabels(!!selection) }, [selection?.id])
+
+  const overrideActive = pathwayLabels && !!selectionSet && selectionSet.size > 0
+  const shownLabels = overrideActive ? selectionSet : labelSymbols
+
   const headerRight = (
-    <SegToggle ariaLabel="Volcano view" options={VIEW} value={view} onChange={setView} />
+    <>
+      {overrideActive && view === 'interactive' && (
+        <button type="button" className="btn btn-outline"
+                title="Restore the labels from the Top N / My list setting"
+                onClick={() => setPathwayLabels(false)}>
+          Reset volcano
+        </button>
+      )}
+      <SegToggle ariaLabel="Volcano view" options={VIEW} value={view} onChange={setView} />
+    </>
   )
 
   return (
@@ -86,7 +109,7 @@ export default function VolcanoSection({
           rows={rows}
           padjCutoff={padjCutoff}
           lfcCutoff={lfcCutoff}
-          labelSymbols={labelSymbols}
+          labelSymbols={shownLabels}
           selectionSet={selectionSet}
         />
       )}

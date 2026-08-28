@@ -47,7 +47,10 @@ function circlesPath(pts, r) {
 const hoverTitle = p =>
   `${p.symbol}\nlog2FC: ${p.lfc.toFixed(3)}\npadj: ${p.padj.toExponential(2)}`
 
-// Push labels apart within an anchor group so they stay legible.
+// Push labels apart within an anchor group so they stay legible. A label that
+// would be pushed past the plot floor is dropped rather than clamped onto it —
+// clamping stacks the tail of a large set into one illegible line, which a
+// pathway gene set hits immediately.
 function deCollide(items) {
   const out = []
   for (const side of ['start', 'end']) {
@@ -56,7 +59,7 @@ function deCollide(items) {
     for (const it of group) {
       let y = it.y
       if (y - prev < LABEL_STEP) y = prev + LABEL_STEP
-      y = Math.min(y, FLOOR_Y)
+      if (y > FLOOR_Y) continue
       prev = y
       out.push({ ...it, y })
     }
