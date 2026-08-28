@@ -23,8 +23,6 @@ same packages and plotting code used to produce the laboratory's published
 figures.
 
 **Current status:** Functional local research tool under active development.
-Validated end to end on one primary laboratory dataset; portability and
-cross-project validation remain in progress.
 
 ![The dashboard with a pathway selected. The linked gene set is projected simultaneously onto the volcano labels, the heatmap rows, and the DE table ordering.](docs/screenshot.png)
 
