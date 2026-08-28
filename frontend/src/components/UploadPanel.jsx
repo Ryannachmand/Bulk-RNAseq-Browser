@@ -1,3 +1,6 @@
+// DEAD FILE — nothing imports this. It predates the project model; uploads now
+// happen through EntranceScreen. Kept rather than deleted so the old
+// dataset-scoped upload flow is still readable.
 export default function UploadPanel({ onUpload, disabled, label = 'Upload DE results table (CSV or TSV):' }) {
   function handleChange(e) {
     const file = e.target.files[0]

@@ -1,69 +1,48 @@
 import { useRef, useState } from 'react'
 import { createProject } from '../api/client'
+import { ErrorMsg } from './ui'
 
-function FileSlot({ label, accept, file, onFile, disabled }) {
+/**
+ * Create-project screen. Same inputs, same accept filters, same handlers and
+ * the same createProject payload as before — only the treatment changed.
+ */
+
+function FileSlot({ label, accept, file, onFile, hint }) {
   const inputRef = useRef(null)
-
   return (
-    <div
-      style={{
-        border: `2px dashed ${disabled ? '#e5e7eb' : file ? '#16a34a' : '#d1d5db'}`,
-        borderRadius: 6,
-        padding: '0.75rem 1rem',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        background: disabled ? '#f9fafb' : file ? '#f0fdf4' : '#fff',
-        transition: 'border-color 0.15s',
-      }}
-      onClick={() => !disabled && inputRef.current?.click()}
-    >
+    <div style={{
+      border: `1.5px solid ${file ? 'var(--accent)' : 'var(--ink)'}`,
+      background: file ? 'var(--accent-tint)' : 'var(--surface-input)',
+      padding: '9px 11px',
+      display: 'flex', alignItems: 'center', gap: 10,
+    }}>
       <input
         ref={inputRef}
         type="file"
         accept={accept}
         style={{ display: 'none' }}
-        disabled={disabled}
         onChange={e => onFile(e.target.files[0] || null)}
       />
-      <div style={{ fontSize: '0.85em', fontWeight: 600, color: disabled ? '#9ca3af' : '#374151' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: '0.8em', color: disabled ? '#d1d5db' : file ? '#15803d' : '#6b7280', marginTop: 2 }}>
-        {disabled ? 'Coming soon' : file ? `✓ ${file.name}` : 'Click to choose file (.csv)'}
-      </div>
-    </div>
-  )
-}
-
-function PathSlot({ label, value, onChange }) {
-  return (
-    <div style={{
-      border: `2px dashed ${value.trim() ? '#16a34a' : '#d1d5db'}`,
-      borderRadius: 6,
-      padding: '0.75rem 1rem',
-      background: value.trim() ? '#f0fdf4' : '#fff',
-    }}>
-      <div style={{ fontSize: '0.85em', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-        {label}
-      </div>
-      <input
-        type="text"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder="/path/to/star/output/folder"
-        style={{
-          width: '100%',
-          boxSizing: 'border-box',
-          border: '1px solid #d1d5db',
-          borderRadius: 4,
-          padding: '0.3rem 0.5rem',
-          fontSize: '0.83em',
-          fontFamily: 'monospace',
-          color: '#374151',
-        }}
-      />
-      <div style={{ fontSize: '0.75em', color: '#9ca3af', marginTop: 3 }}>
-        Server-side path to folder containing *.ReadsPerGene.out.tab files
-      </div>
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ display: 'block', fontWeight: 700, fontSize: 11.5 }}>{label}</span>
+        <span style={{
+          display: 'block', fontWeight: 500, fontSize: 10.5, lineHeight: 1.35,
+          color: file ? 'var(--accent-darkest)' : 'var(--ink-600)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {file ? file.name : hint}
+        </span>
+      </span>
+      <button type="button" className="btn btn-outline" style={{ flex: 'none' }}
+              onClick={() => inputRef.current?.click()}>
+        {file ? 'Replace' : 'Choose'}
+      </button>
+      {file && (
+        <button type="button" className="btn btn-ghost" style={{ flex: 'none' }}
+                onClick={() => onFile(null)}>
+          Clear
+        </button>
+      )}
     </div>
   )
 }
@@ -108,172 +87,123 @@ export default function EntranceScreen({ connected, onProjectCreated }) {
     }
   }
 
-  const statusColor = connected === null ? '#6b7280' : connected ? '#16a34a' : '#dc2626'
-  const statusText = connected === null ? 'Checking backend…' : connected ? 'Backend connected' : 'Backend unreachable'
-
-  const selectStyle = {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '0.35rem 0.5rem',
-    border: '1px solid #d1d5db',
-    borderRadius: 4,
-    fontSize: '0.9em',
-    fontFamily: 'inherit',
-    background: '#fff',
-  }
+  const statusText = connected === null
+    ? 'Checking backend…'
+    : connected ? 'Backend connected' : 'Backend unreachable'
 
   return (
     <div style={{
       minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'system-ui, sans-serif',
-      background: '#f8fafc',
-      padding: '2rem',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      background: 'var(--ground)', padding: '48px 24px',
     }}>
-      <div style={{
-        width: '100%',
-        maxWidth: 560,
-        background: '#fff',
-        borderRadius: 10,
-        boxShadow: '0 1px 8px rgba(0,0,0,0.08)',
-        padding: '2rem',
-      }}>
-        <h1 style={{ margin: '0 0 0.25rem', fontSize: '1.5rem', color: '#111827' }}>
-          Bulk RNA-seq Browser
-        </h1>
-        <p style={{ margin: '0 0 1.75rem', fontSize: '0.85em', color: statusColor }}>{statusText}</p>
+      <div style={{ width: '100%', maxWidth: 620, border: '2px solid var(--ink)', background: 'var(--ground)' }}>
+        {/* header */}
+        <div style={{ padding: '16px 18px 14px', borderBottom: '2px solid var(--ink)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span aria-hidden="true" style={{ width: 14, height: 14, background: 'var(--accent)', flex: 'none' }} />
+            <span className="t-display">Bulk RNA-seq</span>
+            <span className="t-kicker" style={{ marginLeft: 'auto' }}>New project</span>
+          </div>
+          <div className="t-util" style={{
+            marginTop: 8, fontWeight: 500, fontSize: 10,
+            color: connected === false ? 'var(--accent-deep)' : 'var(--ink-600)',
+          }}>
+            {statusText}
+          </div>
+        </div>
 
-        <div style={{ marginBottom: '1.25rem' }}>
-          <label style={{ display: 'block', fontSize: '0.875em', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+        {/* project name */}
+        <div style={{ padding: '14px 18px 16px', borderBottom: '2px solid var(--ink)' }}>
+          <label className="t-util t-util-field" htmlFor="np-name"
+                 style={{ display: 'block', marginBottom: 6 }}>
             Project name
           </label>
           <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
+            id="np-name" type="text" className="fld fld-rail"
+            value={name} onChange={e => setName(e.target.value)}
             placeholder="e.g. Shashank DESeq2 Analysis"
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '0.5rem 0.75rem',
-              border: '1px solid #d1d5db',
-              borderRadius: 5,
-              fontSize: '0.95em',
-              fontFamily: 'inherit',
-            }}
           />
         </div>
 
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ fontSize: '0.875em', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
-            Upload data files{' '}
-            <span style={{ fontWeight: 400, color: '#6b7280' }}>— at least one required</span>
+        {/* data sources */}
+        <div style={{ padding: '14px 18px 16px', borderBottom: '2px solid var(--ink)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+            <span className="t-util">Data sources</span>
+            <span className="t-note" style={{ marginLeft: 'auto' }}>at least one required</span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <FileSlot
-              label="FPKM matrix"
-              accept=".csv"
-              file={fpkmFile}
-              onFile={setFpkmFile}
-              disabled={false}
-            />
-            <FileSlot
-              label="DE results table"
-              accept=".csv"
-              file={deFile}
-              onFile={setDeFile}
-              disabled={false}
-            />
-            <FileSlot
-              label="Pathway results"
-              accept=".csv"
-              file={pathwayFile}
-              onFile={setPathwayFile}
-              disabled={false}
-            />
-            <FileSlot
-              label="Raw counts matrix"
-              accept=".csv,.tsv"
-              file={rawCountsFile}
-              onFile={setRawCountsFile}
-              disabled={false}
-            />
-            <PathSlot
-              label="STAR output folder"
-              value={starFolderPath}
-              onChange={setStarFolderPath}
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <FileSlot label="FPKM matrix" accept=".csv" file={fpkmFile} onFile={setFpkmFile}
+                      hint="CSV — genes as rows, samples as columns" />
+            <FileSlot label="DE results table" accept=".csv" file={deFile} onFile={setDeFile}
+                      hint="CSV — symbol, log2FoldChange, padj" />
+            <FileSlot label="Pathway results" accept=".csv" file={pathwayFile} onFile={setPathwayFile}
+                      hint="CSV — enrichment table" />
+            <FileSlot label="Raw counts matrix" accept=".csv,.tsv" file={rawCountsFile} onFile={setRawCountsFile}
+                      hint="CSV or TSV — STAR / featureCounts output" />
 
-            {/* Species selector — required for raw counts; required for FPKM (enables pathway analysis) */}
             <div style={{
-              padding: '0.65rem 1rem',
-              border: `1px solid ${needsSpecies && !species ? '#fca5a5' : '#e5e7eb'}`,
-              borderRadius: 6,
-              background: needsSpecies ? '#fafafa' : '#f9fafb',
+              border: `1.5px solid ${starFolderPath.trim() ? 'var(--accent)' : 'var(--ink)'}`,
+              background: starFolderPath.trim() ? 'var(--accent-tint)' : 'var(--surface-input)',
+              padding: '9px 11px',
             }}>
-              <label style={{ display: 'block', fontSize: '0.85em', fontWeight: 600, color: needsSpecies ? '#374151' : '#9ca3af', marginBottom: 4 }}>
-                Species{needsSpecies ? ' *' : ''}
+              <label className="t-util t-util-field" htmlFor="np-star"
+                     style={{ display: 'block', marginBottom: 5 }}>
+                STAR output folder
               </label>
-              <select
-                value={species}
-                onChange={e => setSpecies(e.target.value)}
-                disabled={!needsSpecies}
-                style={{ ...selectStyle, color: needsSpecies ? '#374151' : '#9ca3af' }}
-              >
-                <option value="">— required for FPKM / raw counts —</option>
-                <option value="human">Human (GRCh38)</option>
-                <option value="mouse">Mouse (GRCm39)</option>
-              </select>
+              <input
+                id="np-star" type="text" className="fld"
+                style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: 10.5 }}
+                value={starFolderPath}
+                onChange={e => setStarFolderPath(e.target.value)}
+                placeholder="/path/to/star/output/folder"
+              />
+              <p className="t-note" style={{ margin: '5px 0 0' }}>
+                Server-side path to a folder of <code className="t-mono">*.ReadsPerGene.out.tab</code> files.
+              </p>
             </div>
           </div>
         </div>
 
-        {error && (
-          <div style={{
-            marginBottom: '1rem',
-            padding: '0.6rem 0.75rem',
-            background: '#fef2f2',
-            border: '1px solid #fca5a5',
-            borderRadius: 5,
-            color: '#dc2626',
-            fontSize: '0.85em',
-          }}>
-            <strong>Error:</strong> {error}
-          </div>
-        )}
-
-        <button
-          onClick={handleCreate}
-          disabled={!canSubmit}
-          style={{
-            width: '100%',
-            padding: '0.6rem',
-            background: canSubmit ? '#2563eb' : '#9ca3af',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 5,
-            fontSize: '1em',
-            fontWeight: 600,
-            cursor: canSubmit ? 'pointer' : 'default',
-          }}
-        >
-          {creating ? 'Creating project…' : 'Create project'}
-        </button>
-
-        {!hasFile && name.trim() && (
-          <p style={{ textAlign: 'center', margin: '0.5rem 0 0', fontSize: '0.8em', color: '#6b7280' }}>
-            Select at least one data file above.
+        {/* species */}
+        <div style={{ padding: '14px 18px 16px', borderBottom: '2px solid var(--ink)' }}>
+          <label className="t-util t-util-field" htmlFor="np-species"
+                 style={{ display: 'block', marginBottom: 6 }}>
+            Species{needsSpecies ? ' — required' : ''}
+          </label>
+          <select
+            id="np-species" className="fld fld-rail"
+            value={species} onChange={e => setSpecies(e.target.value)}
+            disabled={!needsSpecies}
+            style={needsSpecies && !species ? { borderColor: 'var(--accent)' } : undefined}
+          >
+            <option value="">— required for FPKM / raw counts —</option>
+            <option value="human">Human (GRCh38 · GENCODE v46)</option>
+            <option value="mouse">Mouse (GRCm39 · GENCODE vM35)</option>
+          </select>
+          <p className="t-note" style={{ margin: '6px 0 0' }}>
+            Resolves the GTF used to compute FPKM from raw counts, and the OrgDb used by
+            pathway enrichment.
           </p>
-        )}
-        {needsSpecies && !species && (
-          <p style={{ textAlign: 'center', margin: '0.5rem 0 0', fontSize: '0.8em', color: '#dc2626' }}>
-            Select a species for FPKM / raw counts data.
-          </p>
-        )}
+        </div>
+
+        {/* submit */}
+        <div style={{ padding: '14px 18px 18px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <ErrorMsg>{error}</ErrorMsg>
+          <button type="button" className="btn btn-primary" style={{ width: '100%' }}
+                  onClick={handleCreate} disabled={!canSubmit}>
+            {creating ? 'Creating project…' : 'Create project'}
+          </button>
+          {!hasFile && name.trim() && (
+            <p className="t-note" style={{ margin: 0 }}>Select at least one data source above.</p>
+          )}
+          {needsSpecies && !species && (
+            <p className="t-note" style={{ margin: 0, color: 'var(--accent-deep)', fontWeight: 600 }}>
+              Select a species for FPKM / raw counts data.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   )

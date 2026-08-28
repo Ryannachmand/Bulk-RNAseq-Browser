@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getCategories, updateCategories, resetCategoriesDefaults } from '../api/client'
+import { ErrorMsg } from './ui'
 
-// Single category row — shows name, gene count, and expand/edit controls
+// Single category row — shows name, gene count, and expand/edit controls.
 function CategoryRow({ cat, onChange, onDelete }) {
   const [expanded, setExpanded] = useState(false)
   const [editingName, setEditingName] = useState(false)
@@ -29,89 +30,97 @@ function CategoryRow({ cat, onChange, onDelete }) {
     onChange({ ...cat, genes })
   }
 
-  const rowBg = cat.active ? '#fff' : '#f5f5f5'
-  const badge = cat.active
-    ? { background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }
-    : { background: '#f3f4f6', color: '#6b7280', border: '1px solid #d1d5db' }
-
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, marginBottom: 8, background: rowBg }}>
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
-        {/* Active toggle */}
+    <div style={{
+      border: '1.5px solid var(--ink)',
+      marginBottom: 6,
+      background: cat.active ? 'var(--ground)' : 'var(--ground-alt)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px' }}>
         <input
           type="checkbox"
           checked={!!cat.active}
+          aria-label={`${cat.name} active`}
           title={cat.active ? 'Active — click to deactivate' : 'Inactive — click to activate'}
           onChange={e => onChange({ ...cat, active: e.target.checked })}
-          style={{ cursor: 'pointer', width: 16, height: 16 }}
+          style={{ cursor: 'pointer', width: 14, height: 14, flex: 'none' }}
         />
 
-        {/* Name (clickable to edit) */}
         {editingName ? (
           <input
             autoFocus
+            className="fld"
+            aria-label="Category name"
             value={nameVal}
             onChange={e => setNameVal(e.target.value)}
             onBlur={commitName}
-            onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') { setEditingName(false); setNameVal(cat.name) } }}
-            style={{ flex: 1, padding: '2px 6px', fontSize: '0.9em', border: '1px solid #2563eb', borderRadius: 3 }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitName()
+              if (e.key === 'Escape') { setEditingName(false); setNameVal(cat.name) }
+            }}
+            style={{ flex: 1, minWidth: 0 }}
           />
         ) : (
-          <span
-            style={{ flex: 1, fontWeight: 500, cursor: 'text' }}
-            onClick={() => setEditingName(true)}
+          <button
+            type="button"
+            className="btn"
+            style={{
+              flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'none',
+              fontWeight: 700, fontSize: 11.5, letterSpacing: 0, textTransform: 'none',
+              color: 'var(--ink)', padding: 0, cursor: 'text',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
             title="Click to rename"
+            onClick={() => setEditingName(true)}
           >
             {cat.name}
-          </span>
+          </button>
         )}
 
-        {/* Active badge */}
-        <span style={{ ...badge, borderRadius: 4, padding: '1px 7px', fontSize: '0.78em', whiteSpace: 'nowrap' }}>
+        <span
+          className="t-util"
+          style={{
+            flex: 'none', padding: '2px 6px', whiteSpace: 'nowrap',
+            background: cat.active ? 'var(--ink)' : 'transparent',
+            color: cat.active ? 'var(--ground)' : 'var(--ink-600)',
+            border: cat.active ? 'none' : '1.5px solid var(--rule-mid)',
+          }}
+        >
           {cat.active ? 'active' : 'inactive'}
         </span>
 
-        {/* Gene count */}
-        <span style={{ color: '#6b7280', fontSize: '0.85em', whiteSpace: 'nowrap' }}>
+        <span className="t-num" style={{
+          flex: 'none', fontWeight: 600, fontSize: 10.5,
+          color: 'var(--ink-600)', whiteSpace: 'nowrap',
+        }}>
           {cat.genes.length} genes
         </span>
 
-        {/* Expand / collapse */}
-        <button
-          onClick={() => setExpanded(x => !x)}
-          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#2563eb', fontSize: '0.85em', padding: '2px 6px' }}
-        >
-          {expanded ? 'collapse ▲' : 'edit genes ▼'}
+        <button type="button" className="btn btn-ghost" style={{ flex: 'none' }}
+                aria-expanded={expanded} onClick={() => setExpanded(x => !x)}>
+          {expanded ? 'Collapse' : 'Edit genes'}
         </button>
 
-        {/* Delete */}
-        <button
-          onClick={onDelete}
-          title="Delete category"
-          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '1.1em', lineHeight: 1, padding: '0 4px' }}
-        >
+        <button type="button" className="btn btn-ghost" style={{ flex: 'none' }}
+                title={`Delete ${cat.name}`} aria-label={`Delete ${cat.name}`}
+                onClick={onDelete}>
           ×
         </button>
       </div>
 
-      {/* Expanded gene editor */}
       {expanded && (
-        <div style={{ borderTop: '1px solid #e5e7eb', padding: '10px 12px' }}>
-          <p style={{ margin: '0 0 6px', fontSize: '0.82em', color: '#6b7280' }}>
+        <div style={{ borderTop: '1.5px solid var(--rule-mid)', padding: '9px 10px 10px' }}>
+          <p className="t-note" style={{ margin: '0 0 6px' }}>
             One gene per line, or comma-separated. Changes apply when you click Save below.
           </p>
           <textarea
+            className="fld"
+            aria-label={`Genes in ${cat.name}`}
             value={geneText}
             onChange={e => setGeneText(e.target.value)}
             onBlur={commitGenes}
             rows={Math.min(20, Math.max(6, geneText.split('\n').length + 1))}
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              fontFamily: 'monospace', fontSize: '0.82em',
-              border: '1px solid #d1d5db', borderRadius: 4,
-              padding: '6px 8px', resize: 'vertical',
-            }}
+            style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: 10.5, resize: 'vertical' }}
           />
         </div>
       )}
@@ -143,10 +152,7 @@ export default function CategoryEditor() {
   }
 
   function addCategory() {
-    setCategories(prev => [
-      ...prev,
-      { name: 'New Category', active: true, genes: [] },
-    ])
+    setCategories(prev => [...prev, { name: 'New Category', active: true, genes: [] }])
     setDirty(true)
   }
 
@@ -171,8 +177,7 @@ export default function CategoryEditor() {
     setError(null)
     try {
       await resetCategoriesDefaults()
-      const cats = await getCategories()
-      setCategories(cats)
+      setCategories(await getCategories())
       setDirty(false)
       setStatus('Reset to defaults.')
       setTimeout(() => setStatus(null), 2500)
@@ -183,47 +188,27 @@ export default function CategoryEditor() {
     }
   }
 
-  if (!categories && !error) return <p style={{ color: '#555' }}>Loading categories…</p>
-  if (error) return <p style={{ color: '#dc2626' }}><strong>Error:</strong> {error}</p>
+  if (!categories && !error) return <p className="msg-wait">Loading categories…</p>
+  if (error) return <ErrorMsg>{error}</ErrorMsg>
 
   const nActive = categories.filter(c => c.active).length
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <span style={{ fontWeight: 600, fontSize: '0.95em' }}>
-          Gene Categories
-        </span>
-        <span style={{ color: '#6b7280', fontSize: '0.85em' }}>
-          {nActive} active / {categories.length} total
-        </span>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={addCategory}
-          style={{ padding: '4px 12px', fontSize: '0.85em', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, cursor: 'pointer' }}
-        >
-          + Add category
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <span className="t-util">Gene categories</span>
+        <span className="t-note t-num">{nActive} active / {categories.length} total</span>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="btn btn-outline" onClick={addCategory}>
+          Add category
         </button>
-        <button
-          onClick={resetDefaults}
-          disabled={saving}
-          style={{ padding: '4px 12px', fontSize: '0.85em', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, cursor: 'pointer' }}
-        >
+        <button type="button" className="btn btn-outline" onClick={resetDefaults} disabled={saving}>
           Reset to defaults
         </button>
-        <button
-          onClick={save}
-          disabled={saving || !dirty}
-          style={{
-            padding: '4px 14px', fontSize: '0.85em', borderRadius: 4, cursor: dirty ? 'pointer' : 'default',
-            background: dirty ? '#2563eb' : '#e5e7eb',
-            color: dirty ? '#fff' : '#9ca3af',
-            border: 'none', fontWeight: 600,
-          }}
-        >
+        <button type="button" className="btn btn-primary" onClick={save} disabled={saving || !dirty}>
           {saving ? 'Saving…' : 'Save'}
         </button>
-        {status && <span style={{ color: '#16a34a', fontSize: '0.85em' }}>{status}</span>}
+        {status && <span className="t-util" style={{ color: 'var(--accent-deep)' }}>{status}</span>}
       </div>
 
       {categories.map((cat, i) => (
@@ -236,7 +221,7 @@ export default function CategoryEditor() {
       ))}
 
       {dirty && (
-        <p style={{ color: '#d97706', fontSize: '0.82em', margin: '4px 0 0' }}>
+        <p className="t-note" style={{ margin: '6px 0 0', color: 'var(--accent-deep)', fontWeight: 600 }}>
           Unsaved changes — click Save to persist.
         </p>
       )}

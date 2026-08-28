@@ -1,3 +1,6 @@
+// SUPERSEDED by ProjectRail + the sample-metadata overlay in App.jsx. Nothing
+// imports this file; it is kept, unstyled, only as a reference for the
+// metadata -> contrast -> run sequence it originally owned.
 import { useEffect, useState, useMemo } from 'react'
 import { getProjectSamples, saveProjectMetadata, runDeseq2, runLimma } from '../api/client'
 import SampleMetaPanel from './SampleMetaPanel'

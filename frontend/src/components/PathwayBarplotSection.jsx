@@ -266,7 +266,7 @@ export default function PathwayBarplotSection({
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 7 }}>
               <span style={{
                 fontWeight: 500, fontSize: 10, letterSpacing: '.1em',
-                textTransform: 'uppercase', color: 'var(--ink-500)',
+                textTransform: 'uppercase', color: 'var(--ink-600)',
               }}>
                 {directionAvailable ? '↤ down · ±(−log10 padj) · up ↦' : '−log10 padj ↦'}
               </span>
