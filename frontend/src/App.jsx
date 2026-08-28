@@ -376,7 +376,10 @@ export default function App() {
                 />
               ),
               {
-                id: 'pca', title: 'PCA', kicker: 'VST · blind',
+                // no expression matrix means no transform ran, so the live
+                // panel's VST / log2-FPKM kicker would be a claim about
+                // something that did not happen
+                id: 'pca', title: 'PCA', kicker: 'sample clustering',
                 ...lockedFor.noFpkm, skeleton: 'scatter', ...panelFrameProps,
               }
             )}
