@@ -1,0 +1,468 @@
+/* ============================================================================
+   BULK RNA-SEQ BROWSER — Modernist design system
+   Single source of truth for colour, type, rule weights and control chrome.
+   Flat, architectural, ink on a light ground, one red accent, zero radius.
+   ========================================================================= */
+
+:root {
+  /* ── Ground and ink ─────────────────────────────────────────────────── */
+  --ground:         #f3f2f2;
+  --ground-alt:     #efeeee;
+  --surface-rail:   #eae9e9;
+  --surface-input:  #f8f4f4;
+  --surface-plot:   #faf8f8;
+
+  --ink:            #201e1d;
+  --ink-700:        #444141;
+  --ink-600:        #605d5d;
+  --ink-500:        #7d7979;
+  --ink-400:        #9b9797;
+
+  --rule-strong:    #201e1d;  /* 2px   — panel / section seams            */
+  --rule-mid:       #cfcbcb;  /* 1.5px — inside a panel, under a sub-bar  */
+  --rule-soft:      #d7d3d3;  /* 1px   — chart frame, 2x2 gutter          */
+  --rule-hair:      #e2dfdf;  /* 1px   — table row separators             */
+  --rule-faint:     #eae7e7;  /* 1px   — chart zero / centre guides       */
+
+  /* ── Accent (mono-accent system) ────────────────────────────────────── */
+  --accent:         #ec3013;
+  --accent-pressed: #dd2b0f;
+  --accent-deep:    #ae1800;  /* accent TEXT at <= 12px                   */
+  --accent-darkest: #4d170e;  /* text on an accent tint                   */
+  --accent-tint:    #ffe0d9;
+  --accent-tint-2:  #ffc4b8;  /* ::selection only                         */
+  --accent-tint-3:  #fff2ef;  /* linked DE table row                      */
+
+  /* ── Data encoding (semantic — kept apart from UI colour) ───────────── */
+  --de-up:          #ec3013;
+  --de-down:        #605d5d;
+  --de-ns:          #d5d1d1;
+  --de-dimmed:      #bab6b6;
+
+  --z-low:          #2166ac;
+  --z-mid:          #f4f2f0;
+  --z-high:         #b2182b;
+
+  --overlay-up:     #ae1800;
+  --overlay-down:   #2166ac;
+  --overlay-ns:     #bab6b6;
+
+  /* ── Overlay / elevation (the only shadow in the system) ────────────── */
+  --scrim:          rgba(32, 30, 29, .62);
+  --shadow-modal:   0 24px 64px rgba(32, 30, 29, .42);
+
+  --font:           Archivo, system-ui, sans-serif;
+  --mono:           ui-monospace, Menlo, monospace;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent-deep); text-decoration: none; }
+a:hover { color: var(--accent); text-decoration: underline; }
+
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+input[type=range], input[type=checkbox] { accent-color: var(--accent); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: var(--accent-tint-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+}
+
+/* ── Type roles ─────────────────────────────────────────────────────────── */
+
+.t-display {
+  font-weight: 800; font-size: 13px; line-height: 1;
+  letter-spacing: .02em; text-transform: uppercase;
+}
+.t-metric {
+  font-weight: 800; font-size: 20px; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.t-util {
+  font-weight: 600; font-size: 9.5px; line-height: 1;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-500);
+}
+.t-util-field { letter-spacing: .12em; }
+.t-kicker {
+  font-weight: 500; font-size: 10px; line-height: 1;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-500);
+}
+.t-body {
+  font-weight: 500; font-size: 11.5px; line-height: 1.4;
+  color: var(--ink-700);
+}
+.t-note {
+  font-weight: 400; font-size: 10.5px; line-height: 1.4;
+  color: var(--ink-600);
+}
+.t-mono {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-600);
+}
+.t-num { font-variant-numeric: tabular-nums; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.btn {
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 9.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-align: left;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* solid accent — primary action */
+.btn-primary {
+  padding: 9px 10px;
+  font-size: 11px;
+  letter-spacing: .09em;
+  background: var(--accent);
+  color: #fff;
+  border: 1.5px solid var(--accent);
+}
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  background: var(--accent-pressed);
+  border-color: var(--accent-pressed);
+}
+
+/* outlined — secondary action */
+.btn-outline {
+  padding: 6px 9px;
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid var(--ink);
+}
+.btn-outline:hover:not(:disabled) {
+  background: var(--accent-tint);
+  border-color: var(--accent-deep);
+}
+
+/* ghost / text */
+.btn-ghost {
+  padding: 3px 0;
+  background: none;
+  border: none;
+  color: var(--accent-deep);
+}
+.btn-ghost:hover:not(:disabled) { color: var(--accent); }
+
+/* inverting — CLEAR in the status strip */
+.btn-invert {
+  padding: 5px 8px;
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid var(--ink);
+}
+.btn-invert:hover:not(:disabled) { background: var(--ink); color: var(--ground); }
+
+/* ── Segmented toggle ───────────────────────────────────────────────────── */
+
+.seg {
+  display: inline-flex;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+}
+.seg > button {
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 9.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  background: transparent;
+  color: var(--ink-600);
+  border: none;
+  border-left: 1.5px solid var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.seg > button:first-child { border-left: none; }
+.seg > button:hover:not([aria-pressed="true"]):not(:disabled) { background: var(--accent-tint); color: var(--ink); }
+.seg > button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+.seg > button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── Expand corner-bracket button ───────────────────────────────────────── */
+
+.expand-btn {
+  flex: none;
+  width: 26px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.expand-btn:hover { background: var(--accent-tint); color: var(--ink); }
+.expand-btn[aria-expanded="true"] { background: var(--ink); color: var(--ground); }
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+
+.fld {
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--surface-input);
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  padding: 6px 8px;
+}
+.fld-rail { padding: 7px 8px; width: 100%; }
+.fld::placeholder { color: var(--ink-500); }
+.fld:disabled { opacity: .45; cursor: not-allowed; }
+select.fld { appearance: none; background-image: none; }
+
+.range {
+  -webkit-appearance: none; appearance: none;
+  height: 3px;
+  background: var(--rule-mid);
+  border: none;
+  cursor: pointer;
+}
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 11px; height: 14px;
+  background: var(--accent);
+  border: none; border-radius: 0;
+  cursor: pointer;
+}
+.range::-moz-range-thumb {
+  width: 11px; height: 14px;
+  background: var(--accent);
+  border: none; border-radius: 0;
+  cursor: pointer;
+}
+.range::-moz-range-track { height: 3px; background: var(--rule-mid); }
+
+/* ── Chips ──────────────────────────────────────────────────────────────── */
+
+.chip-well {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  border: 1.5px solid var(--ink);
+  background: var(--surface-input);
+  padding: 4px;
+  min-height: 34px;
+}
+.chip-well-tall { min-height: 62px; align-content: flex-start; }
+.chip-well input.chip-input {
+  flex: 1 1 90px; min-width: 90px;
+  border: none; background: transparent; outline: none;
+  font-family: inherit; font-size: 10.5px; font-weight: 500; color: var(--ink);
+  padding: 3px 4px;
+}
+.chip-well input.chip-input::placeholder { color: var(--ink-500); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 4px 3px 6px;
+  font-weight: 600; font-size: 10.5px; line-height: 1;
+  background: #eae9e9;
+  border: 1.5px solid var(--rule-mid);
+  color: var(--ink);
+}
+.chip-missing { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-darkest); }
+.chip > button {
+  border: none; background: none; padding: 0; cursor: pointer;
+  color: var(--ink-500); font-size: 11px; line-height: 1;
+  font-family: inherit;
+}
+.chip > button:hover { color: var(--accent-deep); }
+.chip-missing > button { color: var(--accent-deep); }
+
+/* ── Panel chrome ───────────────────────────────────────────────────────── */
+
+.panel {
+  background: var(--ground);
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0;
+}
+.panel-header {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 14px 9px;
+  border-bottom: 2px solid var(--ink);
+  flex: none;
+}
+.panel-header-right {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 6px;
+  flex: none;
+}
+.panel-body {
+  padding: 11px 14px 13px;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* expanded (modal) state — promoted in place, never remounted */
+.panel-expanded {
+  position: fixed;
+  left: 56px; top: 40px;
+  width: calc(100% - 112px);
+  max-width: 1328px;
+  height: calc(100vh - 80px);
+  max-height: 900px;
+  overflow: auto;
+  z-index: 60;
+  border: 2px solid var(--ink);
+  box-shadow: var(--shadow-modal);
+  background: var(--ground);
+}
+.panel-scrim {
+  position: fixed; inset: 0;
+  background: var(--scrim);
+  z-index: 50;
+  cursor: zoom-out;
+  border: none;
+  padding: 0;
+  width: 100%;
+}
+.panel-scrim-label {
+  position: fixed; right: 62px; top: 19px; z-index: 61;
+  font-weight: 600; font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: #eae9e9;
+  pointer-events: none;
+}
+.panel-scrim-close {
+  position: fixed; right: 20px; top: 14px; z-index: 61;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid #f3f2f2;
+  background: transparent;
+  color: #f3f2f2;
+  font-size: 14px; line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.panel-scrim-close:hover { background: var(--accent); }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+.dtable { width: 100%; border-collapse: collapse; }
+.dtable th {
+  padding: 8px 14px;
+  border-bottom: 1.5px solid var(--ink);
+  font-weight: 600; font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-500);
+  text-align: left; white-space: nowrap;
+  background: var(--ground);
+  position: sticky; top: 0; z-index: 1;
+}
+.dtable th.num { text-align: right; }
+.dtable th button {
+  all: unset; cursor: pointer;
+  font: inherit; letter-spacing: inherit; color: inherit;
+  text-transform: inherit;
+}
+.dtable th button:hover { color: var(--ink); }
+.dtable td {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--rule-hair);
+  font-weight: 500; font-size: 11.5px;
+}
+.dtable td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dtable td.sym { font-weight: 700; }
+.dtable tr.row-in { background: var(--accent-tint-3); opacity: 1; }
+.dtable tr.row-out { opacity: .32; }
+
+/* ── Stripe fills (the two legitimate gradients live here and in the ramp) ─ */
+
+.stripe-output {
+  background-image: repeating-linear-gradient(135deg, #f8f4f4 0 7px, #efecec 7px 14px);
+  border: 1.5px solid var(--rule-soft);
+}
+.stripe-locked {
+  background-image: repeating-linear-gradient(135deg, #f3f2f2 0 9px, #edecec 9px 18px);
+}
+.z-ramp {
+  background-image: linear-gradient(90deg, #2166ac 0%, #f4f2f0 50%, #b2182b 100%);
+  height: 8px;
+}
+
+/* ── Warning strip (accent left flag) ───────────────────────────────────── */
+
+.warn-strip {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-tint);
+  padding: 6px 9px;
+}
+
+/* ── Pathway rows ───────────────────────────────────────────────────────── */
+
+.pw-row {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 4px;
+  height: 19px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background-color 120ms ease;
+}
+.pw-row:hover { background: #eae9e9; }
+.pw-row[aria-pressed="true"] { background: var(--accent-tint); }
+
+/* ── Error / loading copy ───────────────────────────────────────────────── */
+
+.msg-error {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-tint);
+  padding: 7px 10px;
+  font-weight: 500; font-size: 11px; line-height: 1.45;
+  color: var(--accent-darkest);
+  white-space: pre-wrap;
+  max-height: 220px; overflow: auto;
+}
+.msg-wait {
+  font-weight: 500; font-size: 11.5px; color: var(--ink-600);
+}
+
+/* ── Scrollbars kept flat ───────────────────────────────────────────────── */
+
+.panel-body::-webkit-scrollbar,
+.scroll-y::-webkit-scrollbar { width: 9px; height: 9px; }
+.panel-body::-webkit-scrollbar-thumb,
+.scroll-y::-webkit-scrollbar-thumb { background: var(--rule-mid); }
+.panel-body::-webkit-scrollbar-track,
+.scroll-y::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Narrow-viewport fallback (desktop tool; 1280px+ is the target) ─────── */
+
+@media (max-width: 1279px) {
+  .panel-grid { grid-template-columns: 1fr !important; }
+}
